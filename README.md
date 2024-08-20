@@ -1,3 +1,3 @@
-# Earthqukae Hazard Prediction System
+# Earthquake Hazard Prediction System
 
-This is system is designed to predict the earthquake for future forecasts, with the loction and the type of earthquake, with details of the magnitue, its frquency and other relevant parameters.
+This system is designed to predict the earthquake for future forecasts, with the location and the type of earthquake, with details of the magnitude, its frequency, and other relevant parameters.
