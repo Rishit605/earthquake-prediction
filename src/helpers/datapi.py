@@ -35,3 +35,4 @@ def url_data_call(URL) -> pd.DataFrame:
         gdf = gdf.rename(columns={'geometry': 'geo'})
 
     return gdf
+    
