@@ -2,3 +2,6 @@
 /earthquakevenv
 /data
 *.pth
+*.pyc
+*.pyc
+/src/model/__pycache__
