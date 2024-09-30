@@ -27,12 +27,6 @@ from model.model import Early_Stopping, ModelCheckPoint, EarthquakeModel
 from preprocessing.data_preprocessing import *
 from helpers.utils import plot_loss
     
-# Setting the Logging Environment
-experiment = Experiment(
-  api_key="WzhQCnsnCgodHTTrGLeFORixh",
-  project_name="earfquak-preds",
-  workspace="vintagep"
-)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu") # Setting the device
 
@@ -124,85 +118,130 @@ def feature_selection(df: pd.DataFrame) -> pd.DataFrame:
     return df_reduced
 
 
-df  = raw_data_prep(TimeSeries=False) # Getting the Data
-
-# Making a copy of the data and applying the additional preprocessing steps
-df2 = df.copy()
-df2 = event_counts_for_diff_window2(dataFrame=df2)
-df2 = rolling_windows(new_df=df2)
-
-df2 = feature_engineering(df2)
-df2 = feature_selection(df2)
-# print(df2.columns)
-
 # Defining Pararmeters
-window_size = 15 * 24
+window_size = 30 * 24
 target_column = ['mag', 'dmin', 'rms']
 
-EPOCHS = 20
-BATCH_SIZE = 64
-LEARNING_RATE = 0.0003
+EPOCHS = 5
+BATCH_SIZE = 128
+LEARNING_RATE = 0.0001
 
-# Setting up the Target and Variables
-X1 = df2.drop(columns=target_column)
-Y1 = df2[target_column]
-
-# Applying Scaling Transrofmations
-scaled_X, scaler_X = scaler_dataset(dataSet=X1)
-scaled_Y, scaler_Y = scaler_dataset(dataSet=Y1)
-
-# Creating the Single Step Multi Variable Seperate Sampler
-X, Y = SingleStepMultiVARS_SeperateSampler(scaled_X, scaled_Y, window_size, target_column)
-X, Y = np.array(X), np.array(Y)
-
-# Splitting the dataset
-train_size = int(len(X) * 0.7)
-val_size = int(len(X) * 0.15)
-test_size = len(X) - train_size - val_size
-
-X_train, y_train = X[:train_size], Y[:train_size]
-X_val, y_val = X[train_size:train_size+val_size], Y[train_size:train_size+val_size]
-X_test, y_test = X[train_size+val_size:], Y[train_size+val_size:]
-
-train_tensor = TensorDataset(torch.FloatTensor(X_train), torch.FloatTensor(y_train))
-valid_tensor = TensorDataset(torch.FloatTensor(X_val), torch.FloatTensor(y_val))
-test_tensor = TensorDataset(torch.FloatTensor(X_test), torch.FloatTensor(y_test))
-
-train_dataloader = DataLoader(
-    train_tensor, 
-    batch_size=BATCH_SIZE, 
-    shuffle=False
-)
-
-valid_dataloader = DataLoader(
-    valid_tensor,
-    batch_size=BATCH_SIZE,
-    shuffle=False
-)
-
-test_dataloader = DataLoader(
-    test_tensor,
-    batch_size=BATCH_SIZE,
-    shuffle=False
-)
-
-# Hyper Parameters
-input_size = X_train.shape[-1]
-hidden_size = 64
-num_layers = 3
-output_size = len(target_column)
-dropout_prob = 0.45
+# Optimized dataset function call to avoid multiple reloads
+def load_prep_dataset() -> pd.DataFrame:
+    if 'cached_df' not in globals():
+        print("Loading and preprocessing dataset for the first time...")
+        global cached_df
+        df = raw_data_prep(TimeSeries=False)
+        df = event_counts_for_diff_window2(dataFrame=df)
+        df = rolling_windows(new_df=df)
+        df = feature_engineering(df)
+        df = feature_selection(df)
+        cached_df = df  # Cache the preprocessed dataframe
+    return cached_df
 
 
-# Report multiple hyperparameters using a dictionary:
-hyper_params = {
-   "learning_rate": LEARNING_RATE,
-   "epochs": EPOCHS,
-   "batch_size": BATCH_SIZE,
-   "window_size": window_size,
-   "target_columns": target_column,
-}
-experiment.log_parameters(hyper_params) # Logging the Hyperparameters
+# Defining the Target(s) and Variables
+def VarTar(data) -> tuple:
+    df = data
+
+    # Separate features and targets
+    X1 = df.drop(columns=target_column)
+    Y1 = df[target_column]
+
+    return X1, Y1
+
+
+def scale_data(X1: pd.DataFrame, Y1: pd.DataFrame) -> tuple:
+    """
+    Scales the input features (X1) and targets (Y1) using standard scalers.
+    
+    Returns the scaled X and Y data along with the fitted scaler objects.
+    
+    Args:
+        X1 (pd.DataFrame): Input feature data.
+        Y1 (pd.DataFrame): Target data.
+
+    Returns:
+        scaled_X (np.array): Scaled input feature data.
+        scaler_X (Scaler): Fitted scaler for input data.
+        scaled_Y (np.array): Scaled target data.
+        scaler_Y (Scaler): Fitted scaler for target data.
+    """
+    # Scaling the input features (X1)
+    scaled_X, scaler_X = scaler_dataset(dataSet=X1)
+    
+    # Scaling the target variables (Y1)
+    scaled_Y, scaler_Y = scaler_dataset(dataSet=Y1)
+    
+    return scaled_X, scaler_X, scaled_Y, scaler_Y
+
+
+# Splitting data and caching it to avoid repeated splits
+def split_data() -> tuple:
+    """
+    Splits the dataset into training, validation, and test sets.
+    
+    Calls the scale_data function to scale X and Y. Returns the splits
+    along with the scalers for inverse transformations during testing.
+    
+    Returns:
+        tuple: X_train, y_train, X_val, y_val, X_test, y_test, scaler_X, scaler_Y
+    """
+    if 'cached_splits' not in globals():
+        print("Splitting dataset for the first time...")
+        global cached_splits
+
+        # Separate features and targets
+        X1 = VarTar()[0]
+        Y1 = VarTar()[1]
+        
+        # Scale the features and targets
+        scaled_X, scaler_X, scaled_Y, scaler_Y = scale_data(X1, Y1)
+
+        # Creating the Single Step Multi Variable Seperate Sampler
+        X, Y = SingleStepMultiVARS_SeperateSampler(scaled_X, scaled_Y, window_size, target_column)
+
+        # Splitting the dataset into train, validation, and test sets
+        train_size = int(len(X) * 0.7)
+        val_size = int(len(X) * 0.15)
+        test_size = len(X) - train_size - val_size
+
+        X_train, y_train = X[:train_size], Y[:train_size]
+        X_val, y_val = X[train_size:train_size+val_size], Y[train_size:train_size+val_size]
+        X_test, y_test = X[train_size+val_size:], Y[train_size+val_size:]
+
+        # Cache the splits and scalers
+        cached_splits = (X_train, y_train, X_val, y_val, X_test, y_test, scaler_X, scaler_Y)
+    
+    return cached_splits
+
+
+# Optimized DataLoader creation
+def DataLoader_Conversion(test_data: bool = True) -> tuple:
+    """
+    Converts the training, validation, and test data splits into DataLoader objects.
+    
+    Returns the DataLoaders for each dataset and the fitted scalers for X and Y.
+    
+    Args:
+        test_data (bool): Whether to return the test dataloader as well.
+    
+    Returns:
+        tuple: train_dataloader, valid_dataloader, (test_dataloader), scaler_X, scaler_Y
+    """
+    X_train, y_train, X_val, y_val, X_test, y_test, scaler_X, scaler_Y = split_data()
+
+    train_tensor = TensorDataset(torch.FloatTensor(X_train), torch.FloatTensor(y_train))
+    valid_tensor = TensorDataset(torch.FloatTensor(X_val), torch.FloatTensor(y_val))
+    test_tensor = TensorDataset(torch.FloatTensor(X_test), torch.FloatTensor(y_test))
+
+    train_dataloader = DataLoader(train_tensor, batch_size=BATCH_SIZE, shuffle=False)
+    valid_dataloader = DataLoader(valid_tensor, batch_size=BATCH_SIZE, shuffle=False)
+
+    if test_data:
+        test_dataloader = DataLoader(test_tensor, batch_size=BATCH_SIZE, shuffle=False)
+        return train_dataloader, valid_dataloader, test_dataloader, scaler_X, scaler_Y
+    return train_dataloader, valid_dataloader, scaler_X, scaler_Y
 
 
 # Training step for the Model
@@ -301,12 +340,17 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
 
 
 # Test Step
-def test_step(model_pth):
+def test_step(model, model_pth, scaler_Y):
+    """
+    Loads the model and performs inference on the test set.
+    
+    Args:
+        model_pth (str): Path to the saved model.
+        scaler_Y (Scaler): Fitted scaler for inverse transforming target predictions.
+    """
     # Load the saved model
     model_path = model_pth
-    
-    # Recreate the model architecture
-    loaded_model = EarthquakeModel(input_size, hidden_size, num_layers, output_size, dropout_prob=dropout_prob).to(device)
+    loaded_model = model
     
     # Load the state dict
     loaded_model.load_state_dict(torch.load(model_path))
@@ -318,7 +362,7 @@ def test_step(model_pth):
 
     with torch.no_grad():
         for inputs, targets in test_dataloader:
-            inputs, targets = inputs.to("cuda"), targets.to("cuda")
+            inputs, targets = inputs.to(device), targets.to(device)
             outputs = loaded_model(inputs)
             loss = criterion(outputs, targets)
             test_loss += loss.item()
@@ -333,7 +377,7 @@ def test_step(model_pth):
     predictions = np.array(predictions)
     actuals = np.array(actuals)
 
-    # Inverse transform predictions and actuals
+    # Inverse transform predictions and actuals using the fitted scaler_Y
     predictions_original = scaler_Y.inverse_transform(predictions)
     actuals_original = scaler_Y.inverse_transform(actuals)
 
@@ -357,23 +401,85 @@ def test_step(model_pth):
         plt.close(fig)
 
 
-if __name__ == "__main__":
-    model = EarthquakeModel(input_size, hidden_size, num_layers, output_size, dropout_prob=dropout_prob).to(device)
-    criterion = nn.HuberLoss()
-    optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE, weight_decay=1e-5)
-    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.3, patience=10)
 
-    # Initialize callbacks
-    model_checkpoint = ModelCheckPoint(file_path='earthquake_best_model.pth', verbose=True)
+# Calling the script 
+if __name__ == "__main__":
+    # DataLoader creation (with scalers for later use)
+    train_dataloader, valid_dataloader, test_dataloader, scaler_X, scaler_Y = DataLoader_Conversion()
+
+    # Deining and logging HyperParameters
+    hyper_params = {
+        "learning_rate": LEARNING_RATE,
+        "epochs": EPOCHS,
+        "batch_size": BATCH_SIZE,
+        "window_size": window_size,
+        "target_columns": target_column,
+        "input_size": cached_splits[0].shape[-1],  # Determined after data is loaded
+        "hidden_size": 64,
+        "num_layers": 3,
+        "output_size": len(target_column),
+        "dropout_prob": 0.4,
+        "weight_decay": 1e-5,
+        "scheduler_patience": 10,
+        "scheduler_factor": 0.3
+    }
+
+    # Initialize Comet ML experiment
+    experiment = Experiment(
+        api_key="WzhQCnsnCgodHTTrGLeFORixh",
+        project_name="earthquake-preds",
+        workspace="vintagep"
+    )
+    
+    # Log hyperparameters to Comet ML
+    experiment.log_parameters(hyper_params)
+    
+    
+
+    # Model initialization using hyperparameters
+    model = EarthquakeModel(
+        input_size=hyper_params["input_size"], 
+        hidden_size=hyper_params["hidden_size"], 
+        num_layers=hyper_params["num_layers"], 
+        output_size=hyper_params["output_size"], 
+        dropout_prob=hyper_params["dropout_prob"]
+    ).to(device)
+
+    # Optimizer initialization
+    optimizer = optim.Adam(
+        model.parameters(), 
+        lr=hyper_params["learning_rate"], 
+        weight_decay=hyper_params["weight_decay"]
+    )
+
+    # Scheduler initialization
+    scheduler = ReduceLROnPlateau(
+        optimizer, 
+        mode='min', 
+        factor=hyper_params["scheduler_factor"], 
+        patience=hyper_params["scheduler_patience"]
+    )
+
+
+    criterion = nn.HuberLoss()
+
+    # Callbacks
+    model_checkpoint = ModelCheckPoint(file_path=r'C:\Projs\COde\Earthquake\eq_prediction\src\model\earthquake_best_model2.pth', verbose=True)
     early_stopping = Early_Stopping(patience=20, verbose=True)
 
+    # Training loop
     with experiment.train():
-        train_losses, val_losses = train_model(model, train_dataloader, valid_dataloader, criterion, optimizer, scheduler, EPOCHS, early_stopping, model_checkpoint)
-    
-    with experiment.test():
-        test_step(model_pth=r'C:\Projs\COde\Earthquake\eq_prediction\earthquake_best_model.pth')
+        train_losses, val_losses = train_model(
+            model, train_dataloader, valid_dataloader, 
+            criterion, optimizer, scheduler, EPOCHS, 
+            early_stopping, model_checkpoint
+        )
 
-    # Log the model
+    # Testing phase
+    with experiment.test():
+        test_step(model, model_pth=r'C:\Projs\COde\Earthquake\eq_prediction\src\model\earthquake_best_model2.pth', scaler_Y=scaler_Y)
+
+    # Log final metrics and plots
     log_model(experiment, model, model_name="earthquake_model3")
 
     # Plot and log the loss curves
@@ -386,7 +492,6 @@ if __name__ == "__main__":
     experiment.log_figure(figure_name="Loss Curves", figure=fig)
     plt.close(fig)
 
-
     # Log final metrics
     experiment.log_metric("final_train_loss", train_losses[-1])
     experiment.log_metric("final_val_loss", val_losses[-1])
@@ -394,3 +499,4 @@ if __name__ == "__main__":
 
     # End the experiment
     experiment.end()
+
