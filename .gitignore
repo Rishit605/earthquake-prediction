@@ -1,3 +1,4 @@
 .env
 /earthquakevenv
 /data
+*.pth
