@@ -8,32 +8,27 @@ import matplotlib.pyplot as plt
 import torch
 
 from model.model import EarthquakeModel
-from training.training_nn import (
-    input_size, output_size, window_size,
-    num_layers, hidden_size, dropout_prob,
-    scaler_X, scaler_Y, X_train, 
-    test_dataloader, target_column, scaled_X
-    )
+from training.training_nn import (target_column, load_prep_dataset, VarTar, scale_data)
 
 # Hyperparameters
-input_size = X_train.shape[-1]
+input_size = 24
 hidden_size = 64
 num_layers = 3
 output_size = len(target_column)
-dropout_prob = 0.45
+dropout_prob = 0.35
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu") # Setting the device
 
 # Test Step
-def test_step(model_pth):
-    # Load the saved model
-    model_path = model_pth
+def test_step(loaded_model, model_pth):
+    # # Load the saved model
+    # model_path = model_pth
     
-    # Recreate the model architecture
-    loaded_model = EarthquakeModel(input_size, hidden_size, num_layers, output_size, dropout_prob=dropout_prob).to(device)
+    # # Recreate the model architecture
+    # loaded_model = EarthquakeModel(input_size, hidden_size, num_layers, output_size, dropout_prob=dropout_prob).to(device)
     
-    # Load the state dict
-    loaded_model.load_state_dict(torch.load(model_path))
+    # # Load the state dict
+    # loaded_model.load_state_dict(torch.load(model_path))
     loaded_model.eval()
     
     test_loss = 0
@@ -83,17 +78,17 @@ def test_step(model_pth):
 
 # test_step(model_pth=r'C:\Projs\COde\Earthquake\eq_prediction\earthquake_best_model.pth')
 
+def load_model():
+    # Future Forecasts Generator
+    model_path = r'C:\Projs\COde\Earthquake\eq_prediction\src\model\earthquake_best_model.pth'
 
-
-# Future Forecasts Generator
-model_path = 'C:\Projs\COde\Earthquake\eq_prediction\earthquake_best_model.pth'
-
-try:
-    model = EarthquakeModel(input_size, hidden_size, num_layers, output_size, dropout_prob=dropout_prob).to(device)
-    model.load_state_dict(torch.load(model_path))
-    print("Model loaded successfully!")
-except Exception as e:
-    print(f"Error loading model: {e}")
+    try:
+        model = EarthquakeModel(input_size, hidden_size, num_layers, output_size, dropout_prob=dropout_prob).to(device)
+        model.load_state_dict(torch.load(model_path))
+        print("Model loaded successfully!")
+        return model
+    except Exception as e:
+        print(f"Error loading model: {e}")
 
 # Future forecasting
 def future_forecast(model, last_sequence, scaler_X, scaler_Y, num_days, target_columns):
@@ -115,15 +110,41 @@ def future_forecast(model, last_sequence, scaler_X, scaler_Y, num_days, target_c
     return scaler_Y.inverse_transform(np.array(forecasts))
 
 
+def generate_future_predictions(data: bool, num_days=2):
+        num_days = num_days
 
-num_days = 2
-last_sequence = X_train[-1]
+        if data:
+            # Loading the data for last sequence
+            X1, Y1 = VarTar(load_prep_dataset())
 
-future_predictions = future_forecast(model, last_sequence, scaler_X, scaler_Y, num_days, target_column)
+            last_sequence = X1[-1:]
+            model = load_model()
 
-last_date = pd.to_datetime(scaled_X.index[-1])
-future_dates = pd.date_range(start=last_date + pd.Timedelta(hours=1), periods=(num_days * 24), freq='h')
+            scaler_X, scaler_Y = scale_data(X1, Y1)[1], scale_data(X1, Y1)[3]
+        
+            future_predictions = future_forecast(model, np.array(last_sequence), scaler_X, scaler_Y, num_days, target_column)
+            last_date = pd.to_datetime(X1.index[-1])
+            future_dates = pd.date_range(start=last_date + pd.Timedelta(hours=1), periods=(num_days * 24), freq='h')
 
-future_df = pd.DataFrame(future_predictions, columns=target_column, index=future_dates)
-future_df.to_csv('eq_forecasts_after31122023.csv')
-print(future_df)
+            future_df = pd.DataFrame(future_predictions, columns=target_column, index=future_dates)
+            # future_df.to_csv('eq_forecasts_after31122023.csv')
+            return future_df
+        else: 
+            model = load_model()
+
+            scaler_X, scaler_Y = scale_data(X1, Y1)[1], scale_data(X1, Y1)[3]
+        
+            future_predictions = future_forecast(model, np.array(last_sequence), scaler_X, scaler_Y, num_days, target_column)
+            last_date = pd.to_datetime(X1.index[-1])
+            future_dates = pd.date_range(start=last_date + pd.Timedelta(hours=1), periods=(num_days * 24), freq='h')
+
+            future_df = pd.DataFrame(future_predictions, columns=target_column, index=future_dates)
+            # future_df.to_csv('eq_forecasts_after31122023.csv')
+            return future_df
+
+
+if __name__ =='__main__':
+    preds = generate_future_predictions(data=True)
+    print(set(preds.columns))
+    # print(future_df)
+    # print(set(f'prediction_{i}' for i in range(1, 4)))
