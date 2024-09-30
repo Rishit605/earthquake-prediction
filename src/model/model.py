@@ -32,6 +32,38 @@ class EarthquakeModel(nn.Module):
         return out
 
 
+# Defining the Model Architecture.
+class EarthquakeModel2(nn.Module):
+    def __init__(self, input_size, hidden_size, num_layers, output_size, dropout_prob=0.3):
+        super(EarthquakeModel, self).__init__()
+        self.hidden_size = hidden_size
+        self.num_layers = num_layers
+        
+        # Replace LSTM with GRU
+        self.gru = nn.GRU(input_size, hidden_size, num_layers, 
+                          batch_first=True, dropout=dropout_prob, 
+                          bidirectional=True)
+        
+        self.fc1 = nn.Linear(hidden_size * 2, hidden_size)
+        self.relu = nn.ReLU()
+        self.dropout = nn.Dropout(dropout_prob)
+        self.fc2 = nn.Linear(hidden_size, output_size)
+    
+    def forward(self, x):
+        # Initialize hidden state for GRU
+        h0 = torch.zeros(self.num_layers * 2, x.size(0), self.hidden_size).to(x.device)
+        
+        # GRU forward pass
+        out, _ = self.gru(x, h0)
+        
+        # Use the output from the last time step
+        out = self.fc1(out[:, -1, :])
+        out = self.relu(out)
+        out = self.dropout(out)
+        out = self.fc2(out)
+        return out
+
+
 class ModelCheckPoint:
     """
     Model checkpoint callback to save the best model based on validation loss.
