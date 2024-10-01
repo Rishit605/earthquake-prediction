@@ -110,6 +110,12 @@ def future_forecast(model, last_sequence, scaler_X, scaler_Y, num_days, target_c
     return scaler_Y.inverse_transform(np.array(forecasts))
 
 
+def generateDateRange(num_days, X1):
+    last_date = pd.to_datetime(X1.index[-1])
+    return pd.date_range(start=last_date + pd.Timedelta(hours=1), periods=(num_days * 24), freq='h')
+
+## TODO:Update the DateRange Generation function for predictions generation and Date range geenration funtion for the TImestamps columns  
+
 def generate_future_predictions(data: bool, num_days=2):
         num_days = num_days
 
@@ -123,28 +129,26 @@ def generate_future_predictions(data: bool, num_days=2):
             scaler_X, scaler_Y = scale_data(X1, Y1)[1], scale_data(X1, Y1)[3]
         
             future_predictions = future_forecast(model, np.array(last_sequence), scaler_X, scaler_Y, num_days, target_column)
-            last_date = pd.to_datetime(X1.index[-1])
-            future_dates = pd.date_range(start=last_date + pd.Timedelta(hours=1), periods=(num_days * 24), freq='h')
-
+            
+            future_dates = generateDateRange(2, X1)
             future_df = pd.DataFrame(future_predictions, columns=target_column, index=future_dates)
             # future_df.to_csv('eq_forecasts_after31122023.csv')
-            return future_df
+            return future_df, future_dates
         else: 
             model = load_model()
 
             scaler_X, scaler_Y = scale_data(X1, Y1)[1], scale_data(X1, Y1)[3]
         
             future_predictions = future_forecast(model, np.array(last_sequence), scaler_X, scaler_Y, num_days, target_column)
-            last_date = pd.to_datetime(X1.index[-1])
-            future_dates = pd.date_range(start=last_date + pd.Timedelta(hours=1), periods=(num_days * 24), freq='h')
-
+            
+            future_dates = generateDateRange(2)
             future_df = pd.DataFrame(future_predictions, columns=target_column, index=future_dates)
             # future_df.to_csv('eq_forecasts_after31122023.csv')
-            return future_df
+            return future_df, future_dates
 
 
 if __name__ =='__main__':
     preds = generate_future_predictions(data=True)
-    print(set(preds.columns))
-    # print(future_df)
+    # print(set(preds.columns))
+    print(preds)
     # print(set(f'prediction_{i}' for i in range(1, 4)))
