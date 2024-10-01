@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 import pandas as pd
@@ -12,7 +13,7 @@ from typing import List, Dict
 
 import torch
 
-from src.prediction.inference import future_forecast, generate_future_predictions
+from src.prediction.inference import future_forecast, generate_future_predictions, generateDateRange  # Import the function
 from src.model.model import EarthquakeModel
 from src.prediction.inference import (
     input_size, 
@@ -23,6 +24,16 @@ from src.prediction.inference import (
 )
 
 app = FastAPI()
+
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allows all origins
+    allow_credentials=True,
+    allow_methods=["*"],  # Allows all methods
+    allow_headers=["*"],  # Allows all headers
+)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu") # Setting the device
 
@@ -47,6 +58,7 @@ class PredictionRequest(BaseModel):
 
 class PredictionResponse(BaseModel):
     predictions: Dict[str, List[float]]
+    dates: List[str]  # Added to include future dates
 
 @app.post("/train")
 async def train_model():
@@ -92,7 +104,7 @@ async def train_model():
 async def predict():
     try:    
         # Generate predictions using your custom function
-        predictions_df = generate_future_predictions(data=True)
+        predictions_df, future_dates = generate_future_predictions(data=True)
 
         # Ensure the output contains 3 prediction columns
         expected_outputs = set(predictions_df.columns)
@@ -102,7 +114,10 @@ async def predict():
         # Convert predictions DataFrame to dictionary
         predictions_dict = {col: predictions_df[col].tolist() for col in predictions_df.columns}
         
-        return {"predictions": predictions_dict}
+        # Convert future_dates from Timestamp to string format with microseconds
+        future_dates_str = [date.strftime('%Y-%m-%d %H:%M:%S.%f') for date in future_dates]
+
+        return {"predictions": predictions_dict, "dates": future_dates_str}  # Ensure future_dates_str is returned
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
