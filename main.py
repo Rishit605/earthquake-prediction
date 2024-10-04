@@ -2,6 +2,10 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+import comet_ml
+from comet_ml import Experiment
+from comet_ml.integration.pytorch import log_model
+
 import pandas as pd
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler
@@ -10,11 +14,27 @@ import comet_ml
 from comet_ml import Experiment
 import os
 from typing import List, Dict
+from dotenv import load_dotenv
 
 import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.utils.data import DataLoader, TensorDataset
+from torch.optim.lr_scheduler import ReduceLROnPlateau
+from torch.amp import GradScaler, autocast
 
-from src.prediction.inference import future_forecast, generate_future_predictions, generateDateRange  # Import the function
-from src.model.model import EarthquakeModel
+from src.training.training_nn import (
+    DataLoader_Conversion, load_prep_dataset,
+    EPOCHS, LEARNING_RATE, BATCH_SIZE,
+    target_column, window_size,
+    train_model,test_step
+    )
+from src.prediction.inference import (  # Import the function
+    future_forecast,
+    generate_future_predictions,
+    generateDateRange
+)
+from src.model.model import EarthquakeModel, ModelCheckPoint, Early_Stopping
 from src.prediction.inference import (
     input_size, 
     hidden_size,
@@ -23,8 +43,9 @@ from src.prediction.inference import (
     dropout_prob
 )
 
-app = FastAPI()
 
+load_dotenv()
+app = FastAPI()
 
 # Add CORS middleware
 app.add_middleware(
@@ -47,10 +68,17 @@ def load_model(model_path):
         return None, False
 
 
-# # # Comet ML setup
-# # comet_api_key = os.environ.get('COMET_API_KEY')
-# # comet_project_name = "earthquake-prediction"
-# # comet_workspace = "your-workspace-name"
+# Comet ML setup
+comet_api_key = os.environ.get('API_KEY')
+comet_project_name = os.environ.get('PROJECT_NAME')
+comet_workspace = os.environ.get('WORKSPACE')
+
+# Initialize Comet ML experiment
+experiment = Experiment(
+    api_key=comet_api_key,
+    project_name=comet_project_name,
+    workspace=comet_workspace,
+)
 
 
 class PredictionRequest(BaseModel):
@@ -61,43 +89,102 @@ class PredictionResponse(BaseModel):
     dates: List[str]  # Added to include future dates
 
 @app.post("/train")
-async def train_model():
+async def training():
 
     def load_dataset():
         try: 
             # Load and preprocess data
-            data = pd.read_csv('new_data.csv')
-            return data
+            # DataLoader creation (with scalers for later use)
+            train_dataloader, valid_dataloader, test_dataloader, scaler_X, scaler_Y = DataLoader_Conversion(load_prep_dataset())
+            return train_dataloader, valid_dataloader, test_dataloader, scaler_X, scaler_Y
         except:
             raise FileNotFoundError("Dataset Not Found") 
 
-    if data.empty:
+    if len(load_dataset()[0]) == 0:
         print("Dataset is Empty!")
+        print(load_dataset()[0])
     else:
-        X = data[['feature1', 'feature2', 'feature3']]  # Adjust features as needed
-        y = data['target']
+        # Assuming you have already defined your DataLoader
+        # Load the first batch
+        first_batch = next(iter(load_dataset()[0]))
+
+                # Unpack the batch if it contains inputs and targets
+        inputs, targets = first_batch  # Adjust this based on your DataLoader's output structure
+
+        # Deining and logging HyperParameters
+        hyper_params = {
+            "learning_rate": LEARNING_RATE,
+            "epochs": EPOCHS,
+            "batch_size": BATCH_SIZE,
+            "window_size": window_size,
+            "target_columns": target_column,
+            "input_size": inputs.shape[-1],  # Use the imported input_size
+            "hidden_size": 64,
+            "num_layers": 3,
+            "output_size": len(target_column),
+            "dropout_prob": 0.4,
+            "weight_decay": 1e-5,
+            "scheduler_patience": 10,
+            "scheduler_factor": 0.3
+        }
         
-        X_scaled = scaler.fit_transform(X)
+        # Log hyperparameters to Comet ML
+        experiment.log_parameters(hyper_params)
         
-        # Initialize Comet experiment
-        experiment = Experiment(
-            api_key=comet_api_key,
-            project_name=comet_project_name,
-            workspace=comet_workspace,
+        
+
+        # Model initialization using hyperparameters
+        model = EarthquakeModel(
+            input_size=hyper_params["input_size"], 
+            hidden_size=hyper_params["hidden_size"], 
+            num_layers=hyper_params["num_layers"], 
+            output_size=hyper_params["output_size"], 
+            dropout_prob=hyper_params["dropout_prob"]
+        ).to(device)
+
+        # Optimizer initialization
+        optimizer = optim.Adam(
+            model.parameters(), 
+            lr=hyper_params["learning_rate"], 
+            weight_decay=hyper_params["weight_decay"]
         )
+
+        # Scheduler initialization
+        scheduler = ReduceLROnPlateau(
+            optimizer, 
+            mode='min', 
+            factor=hyper_params["scheduler_factor"], 
+            patience=hyper_params["scheduler_patience"]
+        )
+
+
+        criterion = nn.HuberLoss()
+
+        # Callbacks
+        model_checkpoint = ModelCheckPoint(file_path=r'C:\Projs\COde\Earthquake\eq_prediction\src\model\earthquake_best_model2.pth', verbose=True)
+        early_stopping = Early_Stopping(patience=20, verbose=True)
         
-        # Train the model
-        model.fit(X_scaled, y)
+        # Training loop
+        with experiment.train():
+            train_losses, val_losses = train_model(
+                model, load_dataset()[0], load_dataset()[1], 
+                criterion, optimizer, scheduler, EPOCHS, 
+                early_stopping, model_checkpoint, experiment
+            )
         
-        # Log metrics to Comet
-        experiment.log_metric("train_loss", model.loss_)
-        experiment.log_model("earthquake_model", 'earthquake_model.joblib')
-        
-        # Save the updated model
-        joblib.dump(model, 'earthquake_model.joblib')
-        joblib.dump(scaler, 'scaler.joblib')
-        
+        # Testing phase
+        with experiment.test():
+            test_step(model, model_pth=r'C:\Projs\COde\Earthquake\eq_prediction\src\model\earthquake_best_model2.pth', scaler_Y=scaler_Y)
+
+        # Log final metrics
+        experiment.log_metric("final_train_loss", train_losses[-1])
+        experiment.log_metric("final_val_loss", val_losses[-1])
+        experiment.log_metric("best_val_loss", min(val_losses))
+
+        experiment.end()        
         return {"message": "Model trained successfully"}
+        return {"Dataset Status": train_dataloader}
+
 
 
 @app.post("/predict", response_model=PredictionResponse)
