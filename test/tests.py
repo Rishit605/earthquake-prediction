@@ -2,7 +2,7 @@ import os, sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.model.model import EarthquakeModel
-from main import load_model
+from main import load_model, get_load_dataset  # Import the load_dataset function
 from src.prediction.inference import (
     input_size, 
     hidden_size,
@@ -34,6 +34,16 @@ class TestLoadModel(unittest.TestCase):
         model, success = load_model(nonexistent_path)
         self.assertFalse(success, "Model loading should fail for nonexistent path")
         self.assertIsNone(model, "Model should be None when loading fails")
+
+    def test_load_dataset(self):
+        # Access the nested load_dataset function
+        load_dataset = get_load_dataset()
+        train_dataloader, valid_dataloader, test_dataloader, scaler_X, scaler_Y = load_dataset()
+        
+        # Check that the dataloaders are not empty
+        self.assertGreater(len(train_dataloader.dataset), 0, "Training dataset should not be empty")
+        self.assertGreater(len(valid_dataloader.dataset), 0, "Validation dataset should not be empty")
+        self.assertGreater(len(test_dataloader.dataset), 0, "Testing dataset should not be empty")
 
 if __name__ == "__main__":
     unittest.main()
