@@ -7,7 +7,6 @@ import comet_ml
 from comet_ml import Experiment
 from comet_ml.integration.pytorch import log_model
 
-
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -26,7 +25,7 @@ from helpers.datapi import datas, url_data_call
 from model.model import Early_Stopping, ModelCheckPoint, EarthquakeModel
 from preprocessing.data_preprocessing import *
 from helpers.utils import plot_loss
-    
+
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu") # Setting the device
 
@@ -119,12 +118,12 @@ def feature_selection(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # Defining Pararmeters
-window_size = 30 * 24
+window_size = 15 * 24
 target_column = ['mag', 'dmin', 'rms']
 
-EPOCHS = 5
-BATCH_SIZE = 128
-LEARNING_RATE = 0.0001
+EPOCHS = 20
+BATCH_SIZE = 64
+LEARNING_RATE = 0.001
 
 # Optimized dataset function call to avoid multiple reloads
 def load_prep_dataset() -> pd.DataFrame:
@@ -177,7 +176,7 @@ def scale_data(X1: pd.DataFrame, Y1: pd.DataFrame) -> tuple:
 
 
 # Splitting data and caching it to avoid repeated splits
-def split_data() -> tuple:
+def split_data(data) -> tuple:
     """
     Splits the dataset into training, validation, and test sets.
     
@@ -192,8 +191,8 @@ def split_data() -> tuple:
         global cached_splits
 
         # Separate features and targets
-        X1 = VarTar()[0]
-        Y1 = VarTar()[1]
+        X1 = VarTar(data)[0]
+        Y1 = VarTar(data)[1]
         
         # Scale the features and targets
         scaled_X, scaler_X, scaled_Y, scaler_Y = scale_data(X1, Y1)
@@ -217,7 +216,7 @@ def split_data() -> tuple:
 
 
 # Optimized DataLoader creation
-def DataLoader_Conversion(test_data: bool = True) -> tuple:
+def DataLoader_Conversion(data, test_data: bool = True) -> tuple:
     """
     Converts the training, validation, and test data splits into DataLoader objects.
     
@@ -229,7 +228,9 @@ def DataLoader_Conversion(test_data: bool = True) -> tuple:
     Returns:
         tuple: train_dataloader, valid_dataloader, (test_dataloader), scaler_X, scaler_Y
     """
-    X_train, y_train, X_val, y_val, X_test, y_test, scaler_X, scaler_Y = split_data()
+    cached_splits = split_data(data)
+
+    X_train, y_train, X_val, y_val, X_test, y_test, scaler_X, scaler_Y = cached_splits
 
     train_tensor = TensorDataset(torch.FloatTensor(X_train), torch.FloatTensor(y_train))
     valid_tensor = TensorDataset(torch.FloatTensor(X_val), torch.FloatTensor(y_val))
@@ -242,11 +243,11 @@ def DataLoader_Conversion(test_data: bool = True) -> tuple:
         test_dataloader = DataLoader(test_tensor, batch_size=BATCH_SIZE, shuffle=False)
         return train_dataloader, valid_dataloader, test_dataloader, scaler_X, scaler_Y
     return train_dataloader, valid_dataloader, scaler_X, scaler_Y
-
+    # print(type(cached_splits))
 
 # Training step for the Model
 scaler = GradScaler()
-def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler, num_epochs, early_stopping, checkpoint, logging=True):
+def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler, num_epochs, early_stopping, checkpoint, experiment, logging=True ):
     
     if logging:
         with experiment.train():
@@ -289,7 +290,7 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
                         experiment.log_metric("batch_loss", loss.item(), step=epoch * len(train_loader) + i)
 
                 # Calculate average training loss and accuracy for the epoch
-                avg_train_loss = total_train_loss / len(train_dataloader)
+                avg_train_loss = total_train_loss / len(train_loader)
                 train_losses.append(avg_train_loss)
 
 
@@ -312,7 +313,7 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
                         eval_targets.extend(targets.cpu().numpy())
 
                 # Calculate average evaluation loss and accuracy for the epoch
-                avg_eval_loss = total_eval_loss / len(test_dataloader)
+                avg_eval_loss = total_eval_loss / len(val_loader)
                 eval_losses.append(avg_eval_loss)
 
 
@@ -405,7 +406,7 @@ def test_step(model, model_pth, scaler_Y):
 # Calling the script 
 if __name__ == "__main__":
     # DataLoader creation (with scalers for later use)
-    train_dataloader, valid_dataloader, test_dataloader, scaler_X, scaler_Y = DataLoader_Conversion()
+    train_dataloader, valid_dataloader, test_dataloader, scaler_X, scaler_Y = DataLoader_Conversion(load_prep_dataset())
 
     # Deining and logging HyperParameters
     hyper_params = {
