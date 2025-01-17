@@ -34,13 +34,15 @@ def raw_data_prep(TimeSeries: bool) -> pd.DataFrame:
     """
     Calls and defines the data and returns a Pandas DataFrame with basic preprocssing.
     """
-    df = pd.DataFrame()
+    # df = pd.DataFrame()
 
-    for key, values in datas.items():
-        # print(f"{key} with value: {values}")
-        pseudo_df = url_data_call(datas[key])
+    # for key, values in datas.items():
+    #     # print(f"{key} with value: {values}")
+    #     pseudo_df = url_data_call(datas[key])
 
-        df = pd.concat([df, pseudo_df])
+    #     df = pd.concat([df, pseudo_df])
+
+    df = pd.concat([url_data_call(datas[key]) for key in datas], ignore_index=True)
 
     df = data_preprocessing(df, ts=TimeSeries) ## This function performs basic proecprocessing with an option of Timeseries or not.
     df = imput_encode(df) ## This function encodes and imputs the input data and fills the empty values.
@@ -59,26 +61,34 @@ def feature_engineering(df: pd.DataFrame) -> pd.DataFrame:
 
     # Select columns with float data type
     float_cols = df.select_dtypes(include=['float64']).columns
+    df[float_cols] = df[float_cols].fillna(df[float_cols].mean())  # In-place operation
+
     int32_cols = df.select_dtypes(include=['int32']).columns
     cat_cols = df.select_dtypes(include=['category']).columns
+    # Convert data types
+    df[int32_cols] = df[int32_cols].astype('int64')
+    df[cat_cols] = df[cat_cols].astype('float64')
+    # # Fill NaN values in float columns with their respective means
+    # for col in float_cols:
+    #     df[col] = df[col].fillna(df[col].mean())    
 
-    # Fill NaN values in float columns with their respective means
-    for col in float_cols:
-        df[col] = df[col].fillna(df[col].mean())    
+    # for col in int32_cols:
+    #     df[col] = df[col].astype('int64') # Converting the int32 columns to int64 [This inclues 'lat_lon_bin_encoded', 'magType']
 
-    for col in int32_cols:
-        df[col] = df[col].astype('int64') # Converting the int32 columns to int64 [This inclues 'lat_lon_bin_encoded', 'magType']
-
-    for col in cat_cols:
-        df[col] = df[col].astype('float64') # Converting the category columns to float64 [This includes'lat_bin_mid', 'lon_bin_mid']
+    # for col in cat_cols:
+    #     df[col] = df[col].astype('float64') # Converting the category columns to float64 [This includes'lat_bin_mid', 'lon_bin_mid']
 
     # For Timeseries
-    df.set_index(df['time'], inplace=True, drop=True)
-    col_list= ['time_bin', 'time']
-    for idx in col_list:
-        if idx in df.columns:
-            df = df.drop(columns=[idx])
+    # df.set_index(df['time'], inplace=True, drop=True)
+    # col_list= ['time_bin', 'time']
+    # for idx in col_list:
+    #     if idx in df.columns:
+    #         df = df.drop(columns=[idx])
     
+    # Set index and drop unnecessary columns
+    df.set_index(df['time'], inplace=True, drop=True)
+    df.drop(columns=[col for col in ['time_bin', 'time'] if col in df.columns], inplace=True)
+
     return df
 
 
@@ -152,7 +162,7 @@ def VarTar(data) -> tuple:
 
 def scale_data(X1: pd.DataFrame, Y1: pd.DataFrame) -> tuple:
     """
-    Scales the input features (X1) and targets (Y1) using standard scalers.
+    Scales the input features (X1) and targets (Y1) using the scaler_dataset function from data_preprocessing.py.
     
     Returns the scaled X and Y data along with the fitted scaler objects.
     
@@ -161,17 +171,21 @@ def scale_data(X1: pd.DataFrame, Y1: pd.DataFrame) -> tuple:
         Y1 (pd.DataFrame): Target data.
 
     Returns:
-        scaled_X (np.array): Scaled input feature data.
+        scaled_X (pd.DataFrame): Scaled input feature data.
         scaler_X (Scaler): Fitted scaler for input data.
-        scaled_Y (np.array): Scaled target data.
+        scaled_Y (pd.DataFrame): Scaled target data.
         scaler_Y (Scaler): Fitted scaler for target data.
     """
-    # Scaling the input features (X1)
-    scaled_X, scaler_X = scaler_dataset(dataSet=X1)
-    
-    # Scaling the target variables (Y1)
-    scaled_Y, scaler_Y = scaler_dataset(dataSet=Y1)
-    
+    # Scaling the input features (X1) and target variables (Y1) in parallel
+    from concurrent.futures import ThreadPoolExecutor
+
+    with ThreadPoolExecutor() as executor:
+        futures = [executor.submit(scaler_dataset, X1), executor.submit(scaler_dataset, Y1)]
+        results = [future.result() for future in futures]
+
+    scaled_X, scaler_X = results[0]
+    scaled_Y, scaler_Y = results[1]
+
     return scaled_X, scaler_X, scaled_Y, scaler_Y
 
 
@@ -229,18 +243,14 @@ def DataLoader_Conversion(data, test_data: bool = True) -> tuple:
         tuple: train_dataloader, valid_dataloader, (test_dataloader), scaler_X, scaler_Y
     """
     cached_splits = split_data(data)
-
     X_train, y_train, X_val, y_val, X_test, y_test, scaler_X, scaler_Y = cached_splits
 
-    train_tensor = TensorDataset(torch.FloatTensor(X_train), torch.FloatTensor(y_train))
-    valid_tensor = TensorDataset(torch.FloatTensor(X_val), torch.FloatTensor(y_val))
-    test_tensor = TensorDataset(torch.FloatTensor(X_test), torch.FloatTensor(y_test))
-
-    train_dataloader = DataLoader(train_tensor, batch_size=BATCH_SIZE, shuffle=False)
-    valid_dataloader = DataLoader(valid_tensor, batch_size=BATCH_SIZE, shuffle=False)
+    # Create DataLoader objects
+    train_dataloader = DataLoader(TensorDataset(torch.FloatTensor(X_train), torch.FloatTensor(y_train)), batch_size=BATCH_SIZE, shuffle=True)
+    valid_dataloader = DataLoader(TensorDataset(torch.FloatTensor(X_val), torch.FloatTensor(y_val)), batch_size=BATCH_SIZE, shuffle=False)
 
     if test_data:
-        test_dataloader = DataLoader(test_tensor, batch_size=BATCH_SIZE, shuffle=False)
+        test_dataloader = DataLoader(TensorDataset(torch.FloatTensor(X_test), torch.FloatTensor(y_test)), batch_size=BATCH_SIZE, shuffle=False)
         return train_dataloader, valid_dataloader, test_dataloader, scaler_X, scaler_Y
     return train_dataloader, valid_dataloader, scaler_X, scaler_Y
     # print(type(cached_splits))
@@ -465,7 +475,7 @@ if __name__ == "__main__":
     criterion = nn.HuberLoss()
 
     # Callbacks
-    model_checkpoint = ModelCheckPoint(file_path=r'C:\Projs\COde\Earthquake\eq_prediction\src\model\earthquake_best_model2.pth', verbose=True)
+    model_checkpoint = ModelCheckPoint(file_path=r'C:\Projs\COde\Earthquake\eq_prediction\src\model\earthquake_best_model3.pth', verbose=True)
     early_stopping = Early_Stopping(patience=20, verbose=True)
 
     # Training loop
@@ -473,12 +483,12 @@ if __name__ == "__main__":
         train_losses, val_losses = train_model(
             model, train_dataloader, valid_dataloader, 
             criterion, optimizer, scheduler, EPOCHS, 
-            early_stopping, model_checkpoint
+            early_stopping, model_checkpoint, experiment
         )
 
     # Testing phase
     with experiment.test():
-        test_step(model, model_pth=r'C:\Projs\COde\Earthquake\eq_prediction\src\model\earthquake_best_model2.pth', scaler_Y=scaler_Y)
+        test_step(model, model_pth=r'C:\Projs\COde\Earthquake\eq_prediction\src\model\earthquake_best_model3.pth', scaler_Y=scaler_Y)
 
     # Log final metrics and plots
     log_model(experiment, model, model_name="earthquake_model3")
@@ -500,4 +510,3 @@ if __name__ == "__main__":
 
     # End the experiment
     experiment.end()
-
