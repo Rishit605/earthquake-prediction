@@ -1,8 +1,6 @@
 import os 
 import sys
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 import comet_ml
 from comet_ml import Experiment
 from comet_ml.integration.pytorch import log_model
@@ -21,33 +19,24 @@ from torch.utils.data import DataLoader, TensorDataset
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.amp import GradScaler, autocast
 
-from helpers.datapi import datas, url_data_call
-from model.model import Early_Stopping, ModelCheckPoint, EarthquakeModel
-from preprocessing.data_preprocessing import *
-from helpers.utils import plot_loss
+from src.helpers import datas, url_data_call, plot_loss
+from src.model import Early_Stopping, ModelCheckPoint, EarthquakeModel
+from src.preprocessing import *
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu") # Setting the device
 
 #1 This function calls the data from the url and performs basic preprocessing.
-def raw_data_prep(TimeSeries: bool) -> pd.DataFrame:
+def raw_data_prep(TimeSeries: bool, save: bool = False) -> pd.DataFrame:
     """
     Calls and defines the data and returns a Pandas DataFrame with basic preprocssing.
     """
-    # df = pd.DataFrame()
+    df = pd.concat([url_data_call(URL=datas[key], stored_data=save) for key in datas], ignore_index=True)
 
-    # for key, values in datas.items():
-    #     # print(f"{key} with value: {values}")
-    #     pseudo_df = url_data_call(datas[key])
+    dff = data_preprocessing(df, ts=TimeSeries) ## This function performs basic proecprocessing with an option of Timeseries or not.
+    dff = imput_encode(dff) ## This function encodes and imputs the input data and fills the empty values.
 
-    #     df = pd.concat([df, pseudo_df])
-
-    df = pd.concat([url_data_call(datas[key]) for key in datas], ignore_index=True)
-
-    df = data_preprocessing(df, ts=TimeSeries) ## This function performs basic proecprocessing with an option of Timeseries or not.
-    df = imput_encode(df) ## This function encodes and imputs the input data and fills the empty values.
-
-    return df
+    return dff
 
 # 2. This function performs feature engineering on the input dataframe.
 def feature_engineering(df: pd.DataFrame) -> pd.DataFrame:
@@ -68,22 +57,6 @@ def feature_engineering(df: pd.DataFrame) -> pd.DataFrame:
     # Convert data types
     df[int32_cols] = df[int32_cols].astype('int64')
     df[cat_cols] = df[cat_cols].astype('float64')
-    # # Fill NaN values in float columns with their respective means
-    # for col in float_cols:
-    #     df[col] = df[col].fillna(df[col].mean())    
-
-    # for col in int32_cols:
-    #     df[col] = df[col].astype('int64') # Converting the int32 columns to int64 [This inclues 'lat_lon_bin_encoded', 'magType']
-
-    # for col in cat_cols:
-    #     df[col] = df[col].astype('float64') # Converting the category columns to float64 [This includes'lat_bin_mid', 'lon_bin_mid']
-
-    # For Timeseries
-    # df.set_index(df['time'], inplace=True, drop=True)
-    # col_list= ['time_bin', 'time']
-    # for idx in col_list:
-    #     if idx in df.columns:
-    #         df = df.drop(columns=[idx])
     
     # Set index and drop unnecessary columns
     df.set_index(df['time'], inplace=True, drop=True)
@@ -131,16 +104,16 @@ def feature_selection(df: pd.DataFrame) -> pd.DataFrame:
 window_size = 15 * 24
 target_column = ['mag', 'dmin', 'rms']
 
-EPOCHS = 20
+EPOCHS = 50
 BATCH_SIZE = 64
 LEARNING_RATE = 0.001
 
 # Optimized dataset function call to avoid multiple reloads
-def load_prep_dataset() -> pd.DataFrame:
+def load_prep_dataset(save: bool = False) -> pd.DataFrame:
     if 'cached_df' not in globals():
         print("Loading and preprocessing dataset for the first time...")
         global cached_df
-        df = raw_data_prep(TimeSeries=False)
+        df = raw_data_prep(TimeSeries=False, save=save)
         df = event_counts_for_diff_window2(dataFrame=df)
         df = rolling_windows(new_df=df)
         df = feature_engineering(df)
@@ -344,9 +317,9 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
 
                 # Early stopping
                 early_stopping(avg_eval_loss)
-                # if early_stopping.early_stop:
-                #     print(f'Early stopping triggered after {epoch + 1} epochs')
-                #     break
+                if early_stopping.early_stop:
+                    print(f'Early stopping triggered after {epoch + 1} epochs')
+                    break
             return train_losses, eval_losses
 
 
@@ -416,7 +389,7 @@ def test_step(model, model_pth, scaler_Y):
 # Calling the script 
 if __name__ == "__main__":
     # DataLoader creation (with scalers for later use)
-    train_dataloader, valid_dataloader, test_dataloader, scaler_X, scaler_Y = DataLoader_Conversion(load_prep_dataset())
+    train_dataloader, valid_dataloader, test_dataloader, scaler_X, scaler_Y = DataLoader_Conversion(load_prep_dataset(save = False))
 
     # Deining and logging HyperParameters
     hyper_params = {
@@ -429,7 +402,7 @@ if __name__ == "__main__":
         "hidden_size": 64,
         "num_layers": 3,
         "output_size": len(target_column),
-        "dropout_prob": 0.4,
+        "dropout_prob": 0.5,
         "weight_decay": 1e-5,
         "scheduler_patience": 10,
         "scheduler_factor": 0.3
@@ -475,7 +448,7 @@ if __name__ == "__main__":
     criterion = nn.HuberLoss()
 
     # Callbacks
-    model_checkpoint = ModelCheckPoint(file_path=r'C:\Projs\COde\Earthquake\eq_prediction\src\model\earthquake_best_model3.pth', verbose=True)
+    model_checkpoint = ModelCheckPoint(file_path=r'C:\Projs\COde\Earthquake\eq_prediction\src\model\earthquake_best_model_torch.pth', verbose=True)
     early_stopping = Early_Stopping(patience=20, verbose=True)
 
     # Training loop
