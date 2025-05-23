@@ -17,6 +17,7 @@ class EarthquakeModel(nn.Module):
         self.num_layers = num_layers
         self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True, dropout=dropout_prob, bidirectional=True)
         self.fc1 = nn.Linear(hidden_size * 2, hidden_size)
+        self.bn1 = nn.BatchNorm1d(hidden_size)
         self.relu = nn.ReLU()
         self.dropout = nn.Dropout(dropout_prob)
         self.fc2 = nn.Linear(hidden_size, output_size)
@@ -26,6 +27,7 @@ class EarthquakeModel(nn.Module):
         c0 = torch.zeros(self.num_layers * 2, x.size(0), self.hidden_size).to(x.device)
         out, _ = self.lstm(x, (h0, c0))
         out = self.fc1(out[:, -1, :])
+        out = self.bn1(out)
         out = self.relu(out)
         out = self.dropout(out)
         out = self.fc2(out)
