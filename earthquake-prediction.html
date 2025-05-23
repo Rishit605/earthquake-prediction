@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Earthquake Prediction Dashboard</title>
+    <style>
+        :root {
+            --primary-color: #3498db;
+            --secondary-color: #2c3e50;
+            --accent-color: #e74c3c;
+            --background-color: #ecf0f1;
+            --text-color: #34495e;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 0;
+            background-color: var(--background-color);
+            color: var(--text-color);
+        }
+        
+        .container {
+            max-width: 1000px;
+            margin: 2rem auto;
+            padding: 2rem;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        
+        h1 {
+            color: var(--secondary-color);
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+        }
+        
+        .subtitle {
+            color: var(--primary-color);
+            font-size: 1.2rem;
+        }
+        
+        #fetchButton {
+            background-color: var(--primary-color);
+            border: none;
+            color: white;
+            padding: 12px 24px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 1rem 0;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: background-color 0.3s ease;
+        }
+        
+        #fetchButton:hover {
+            background-color: #2980b9;
+        }
+        
+        #fetchButton:disabled {
+            background-color: #bdc3c7;
+            cursor: not-allowed;
+        }
+        
+        #errorMessage {
+            color: var(--accent-color);
+            margin-top: 1rem;
+            font-weight: bold;
+            text-align: center;
+        }
+        
+        .table-container {
+            overflow-x: auto;
+            margin-top: 2rem;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+        }
+        
+        th, td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        
+        thead {
+            background-color: var(--secondary-color);
+            color: white;
+        }
+        
+        th {
+            font-weight: bold;
+        }
+        
+        tbody tr:nth-child(even) {
+            background-color: #f2f2f2;
+        }
+        
+        tbody tr:hover {
+            background-color: #e0e0e0;
+            transition: background-color 0.3s ease;
+        }
+        
+        .loading {
+            text-align: center;
+            margin-top: 2rem;
+            font-style: italic;
+            color: var(--secondary-color);
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        .fade-in {
+            animation: fadeIn 0.5s ease-in;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Earthquake Prediction Dashboard</h1>
+            <p class="subtitle">Real-time seismic activity forecasts</p>
+        </header>
+        
+        <button id="fetchButton">Fetch Latest Predictions</button>
+        <div id="errorMessage"></div>
+        
+        <div id="loadingMessage" class="loading" style="display: none;">Fetching latest predictions...</div>
+        
+        <div class="table-container">
+            <table id="predictionsTable">
+                <thead>
+                    <tr>
+                        <th>Timestamps</th>
+                        <th>Magnitude</th>
+                        <th>Minimum Distance</th>
+                        <th>RMS</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        const fetchButton = document.getElementById('fetchButton');
+        const errorMessage = document.getElementById('errorMessage');
+        const predictionsTable = document.getElementById('predictionsTable');
+        const loadingMessage = document.getElementById('loadingMessage');
+
+        async function fetchPredictions() {
+            try {
+                const response = await fetch('http://localhost:8000/predict', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to fetch predictions');
+                }
+
+                const data = await response.json();
+                displayPredictions(data.predictions, data.dates); // Ensure this is correct
+            } catch (error) {
+                errorMessage.textContent = `Error: ${error.message}`;
+            } finally {
+                fetchButton.disabled = false;
+                loadingMessage.style.display = 'none';
+                predictionsTable.style.display = 'table';
+            }
+        }
+
+        function displayPredictions(predictions, dates) { // Updated to accept dates
+            const thead = predictionsTable.querySelector('thead tr');
+            const tbody = predictionsTable.querySelector('tbody');
+
+            // Clear existing table content
+            thead.innerHTML = '<th>Timestamp</th>';
+            tbody.innerHTML = '';
+
+            // Add custom table headers
+            const customHeaders = ['Magnitude', 'Minimum Distance', 'RMS'];
+            customHeaders.forEach(header => {
+                const th = document.createElement('th');
+                th.textContent = header;
+                thead.appendChild(th);
+            });
+
+            // Add table rows with date-time range for predictions
+            const rowCount = predictions[Object.keys(predictions)[0]].length;
+            for (let i = 0; i < rowCount; i++) {
+                const row = tbody.insertRow();
+                row.className = 'fade-in';
+                const dateCell = row.insertCell();
+                dateCell.textContent = dates[i]; // Use the fetched dates for the timestamp column
+
+                Object.keys(predictions).forEach(feature => {
+                    const cell = row.insertCell();
+                    cell.textContent = predictions[feature][i].toFixed(4);
+                });
+            }
+        }
+
+        fetchButton.addEventListener('click', fetchPredictions);
+
+        // Initial fetch on page load
+        fetchPredictions();
+    </script>
+</body>
+</html>

@@ -1,5 +1,12 @@
 .env
+/earthquakevenv
 /data
 *.pth
 *.pyc
+*.pyc
+/__pycache__/
 *.csv
+*.pyc
+/src/training/__pycache__
+/src/model/__pycache__
+/src/preprocessing/__pycache__
