@@ -10,8 +10,7 @@ import geopandas as gpd
 
 from sklearn.preprocessing import LabelEncoder, MinMaxScaler
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from helpers.datapi import url_data_call, datas
+from src.helpers import url_data_call, datas
 
 
 ## DEFINING THE PREPROCESSING FUNCTION
