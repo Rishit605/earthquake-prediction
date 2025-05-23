@@ -1,5 +1,4 @@
 import os, sys
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import numpy as np
 import pandas as pd
@@ -21,14 +20,6 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu") # Setting 
 
 # Test Step
 def test_step(loaded_model, model_pth):
-    # # Load the saved model
-    # model_path = model_pth
-    
-    # # Recreate the model architecture
-    # loaded_model = EarthquakeModel(input_size, hidden_size, num_layers, output_size, dropout_prob=dropout_prob).to(device)
-    
-    # # Load the state dict
-    # loaded_model.load_state_dict(torch.load(model_path))
     loaded_model.eval()
     
     test_loss = 0
@@ -80,7 +71,7 @@ def test_step(loaded_model, model_pth):
 
 def load_model():
     # Future Forecasts Generator
-    model_path = r'C:\Projs\COde\Earthquake\eq_prediction\src\model\earthquake_best_model.pth'
+    model_path = r'C:\Projs\COde\Earthquake\eq_prediction\src\model\earthquake_best_model_torch.pth'
 
     try:
         model = EarthquakeModel(input_size, hidden_size, num_layers, output_size, dropout_prob=dropout_prob).to(device)
@@ -143,12 +134,8 @@ def generate_future_predictions(data: bool, num_days=2):
             
             future_dates = generateDateRange(2)
             future_df = pd.DataFrame(future_predictions, columns=target_column, index=future_dates)
-            # future_df.to_csv('eq_forecasts_after31122023.csv')
             return future_df, future_dates
 
 
 if __name__ =='__main__':
-    preds = generate_future_predictions(data=True)
-    # print(set(preds.columns))
-    print(preds)
-    # print(set(f'prediction_{i}' for i in range(1, 4)))
+    preds = generate_future_predictions(data=True, num_days = 0.5)
