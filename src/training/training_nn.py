@@ -19,7 +19,7 @@ from torch.utils.data import DataLoader, TensorDataset
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.amp import GradScaler, autocast
 
-from src.helpers import datas, url_data_call, plot_loss
+from src.helpers import generate_url_periods, url_data_call, plot_loss
 from src.model import Early_Stopping, ModelCheckPoint, EarthquakeModel
 from src.preprocessing import *
 
@@ -27,16 +27,44 @@ from src.preprocessing import *
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu") # Setting the device
 
 #1 This function calls the data from the url and performs basic preprocessing.
-def raw_data_prep(TimeSeries: bool, save: bool = False) -> pd.DataFrame:
+def raw_data_prep(TimeSeries: bool, save: bool = False, training: bool = True) -> pd.DataFrame:
     """
     Calls and defines the data and returns a Pandas DataFrame with basic preprocssing.
-    """
-    df = pd.concat([url_data_call(URL=datas[key], stored_data=save) for key in datas], ignore_index=True)
+    """ 
+    if training:
+        data_urls = generate_url_periods(start_year=2020, end_year=2024)
 
-    dff = data_preprocessing(df, ts=TimeSeries) ## This function performs basic proecprocessing with an option of Timeseries or not.
-    dff = imput_encode(dff) ## This function encodes and imputs the input data and fills the empty values.
+        # Fetch and combine data from all periods
+        earthquake_data = []
+        for period, url in data_urls.items():
+            print(f"Fetching data for {period}...")
+            period_data = url_data_call(url)
+            if not period_data.empty: 
+                earthquake_data.append(period_data)
+        df = pd.concat(earthquake_data, ignore_index=True)
 
-    return dff
+        dff = data_preprocessing(df, ts=TimeSeries) ## This function performs basic proecprocessing with an option of Timeseries or not.
+        dff = imput_encode(dff) ## This function encodes and imputs the input data and fills the empty values.
+
+        return dff
+
+    else:
+        data_urls = generate_url_periods(start_year=2024, end_year=2024)
+
+        # Fetch and combine data from all periods
+        earthquake_data = []
+        for period, url in data_urls.items():
+            print(f"Fetching data for {period}...")
+            period_data = url_data_call(url)
+            if not period_data.empty: 
+                earthquake_data.append(period_data)
+
+        df = pd.concat(earthquake_data, ignore_index=True)
+
+        dff = data_preprocessing(df, ts=TimeSeries) ## This function performs basic proecprocessing with an option of Timeseries or not.
+        dff = imput_encode(dff) ## This function encodes and imputs the input data and fills the empty values.
+
+        return dff
 
 # 2. This function performs feature engineering on the input dataframe.
 def feature_engineering(df: pd.DataFrame) -> pd.DataFrame:
@@ -101,27 +129,26 @@ def feature_selection(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # Defining Pararmeters
-window_size = 15 * 24
+window_size = 7 * 24
 target_column = ['mag', 'dmin', 'rms']
 
 EPOCHS = 50
-BATCH_SIZE = 64
+BATCH_SIZE = 128
 LEARNING_RATE = 0.001
 
 # Optimized dataset function call to avoid multiple reloads
-def load_prep_dataset(save: bool = False) -> pd.DataFrame:
+def load_prep_dataset(save: bool = False, training: bool = True) -> pd.DataFrame:
     if 'cached_df' not in globals():
         print("Loading and preprocessing dataset for the first time...")
         global cached_df
-        df = raw_data_prep(TimeSeries=False, save=save)
+        df = raw_data_prep(TimeSeries=False, save=save, training=training)
         df = event_counts_for_diff_window2(dataFrame=df)
         df = rolling_windows(new_df=df)
         df = feature_engineering(df)
         df = feature_selection(df)
         cached_df = df  # Cache the preprocessed dataframe
-    return cached_df
-
-
+        return cached_df
+        
 # Defining the Target(s) and Variables
 def VarTar(data) -> tuple:
     df = data
