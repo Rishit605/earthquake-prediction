@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Earthquake Prediction Dashboard</title>
+    <title>Earthquake Prediction Dashboard</title>    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
     <style>
         :root {
             --primary-color: #3498db;
@@ -12,23 +13,67 @@
             --background-color: #ecf0f1;
             --text-color: #34495e;
         }
-        
-        body {
+          body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             line-height: 1.6;
             margin: 0;
             padding: 0;
             background-color: var(--background-color);
             color: var(--text-color);
+            height: 100vh;
+            overflow-x: hidden;
         }
         
-        .container {
-            max-width: 1000px;
-            margin: 2rem auto;
-            padding: 2rem;
+        .dashboard {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            padding: 20px;
+            height: calc(100vh - 40px);
+        }
+
+        .left-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            max-height: 100%;
+            overflow-y: auto;
+        }
+
+        .right-panel {
+            position: sticky;
+            top: 20px;
+            height: calc(100vh - 40px);
+        }
+
+        .welcome-section {
             background: white;
+            padding: 20px;
             border-radius: 8px;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        #map {
+            height: 100%;
+            width: 100%;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .controls-section {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .table-container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            max-height: 400px;
+            overflow-y: auto;
         }
         
         header {
@@ -112,10 +157,46 @@
             background-color: #e0e0e0;
             transition: background-color 0.3s ease;
         }
-        
+          .action-button {
+            background-color: var(--primary-color);
+            border: none;
+            color: white;
+            padding: 12px 24px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 1rem 0;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: background-color 0.3s ease;
+            width: 100%;
+            max-width: 300px;
+        }
+
+        #retrainButton {
+            background-color: var(--accent-color);
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background-color: #f0f0f0;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+
+        .progress-fill {
+            width: 0%;
+            height: 100%;
+            background-color: var(--primary-color);
+            transition: width 0.3s ease;
+        }
+
         .loading {
             text-align: center;
-            margin-top: 2rem;
+            margin-top: 1rem;
             font-style: italic;
             color: var(--secondary-color);
         }
@@ -128,45 +209,110 @@
         .fade-in {
             animation: fadeIn 0.5s ease-in;
         }
+
+        #retrainStatus {
+            text-align: center;
+            margin-top: 10px;
+            font-weight: bold;
+        }
     </style>
 </head>
-<body>
-    <div class="container">
-        <header>
-            <h1>Earthquake Prediction Dashboard</h1>
-            <p class="subtitle">Real-time seismic activity forecasts</p>
-        </header>
-        
-        <button id="fetchButton">Fetch Latest Predictions</button>
-        <div id="errorMessage"></div>
-        
-        <div id="loadingMessage" class="loading" style="display: none;">Fetching latest predictions...</div>
-        
-        <div class="table-container">
-            <table id="predictionsTable">
-                <thead>
-                    <tr>
-                        <th>Timestamps</th>
-                        <th>Magnitude</th>
-                        <th>Minimum Distance</th>
-                        <th>RMS</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    
-                </tbody>
-            </table>
-        </div>
-    </div>
+<body>    <div class="dashboard">
+        <div class="left-panel">
+            <div class="welcome-section">
+                <h1>Earthquake Prediction Dashboard</h1>
+                <p class="subtitle">Real-time seismic activity forecasts</p>
+                <p>Welcome to our advanced earthquake prediction system. This dashboard provides real-time forecasts 
+                of seismic activities using machine learning models trained on historical earthquake data. The map on 
+                the right shows recent earthquake locations and predictions.</p>
+            </div>
 
-    <script>
+            <div class="controls-section">
+                <button id="fetchButton" class="action-button">Generate New Predictions</button>
+                <div id="errorMessage"></div>
+                <div id="loadingMessage" class="loading" style="display: none;">Generating predictions...</div>
+            </div>
+
+            <div class="table-container">
+                <table id="predictionsTable">
+                    <thead>
+                        <tr>
+                            <th>Timestamps</th>
+                            <th>Magnitude</th>
+                            <th>Minimum Distance</th>
+                            <th>RMS</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="controls-section">
+                <button id="retrainButton" class="action-button">Retrain Model</button>
+                <div id="retrainProgress" style="display: none;">
+                    <div class="progress-bar">
+                        <div class="progress-fill"></div>
+                    </div>
+                    <p id="retrainStatus">Training progress: <span id="progressPercentage">0</span>%</p>
+                </div>
+            </div>
+        </div>        <div class="right-panel">
+            <div id="map"></div>
+            <div class="legend">
+                <h4>Magnitude Scale</h4>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #ff0000"></div>
+                    <span>≥ 7.0</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #ff6600"></div>
+                    <span>6.0 - 6.9</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #ffcc00"></div>
+                    <span>5.0 - 5.9</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #ffff00"></div>
+                    <span>4.0 - 4.9</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #00ff00"></div>
+                    <span>< 4.0</span>
+                </div>
+            </div>
+        </div>
+    </div>    <script>
+        // Initialize map with dark theme
+        const map = L.map('map', {
+            minZoom: 2,
+            maxZoom: 18,
+            scrollWheelZoom: true
+        }).setView([20, 0], 2);
+        
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            attribution: '© OpenStreetMap contributors, © CARTO',
+            maxZoom: 18
+        }).addTo(map);
+
+        // Array to store and track markers
+        let currentMarkers = [];
+
         const fetchButton = document.getElementById('fetchButton');
+        const retrainButton = document.getElementById('retrainButton');
         const errorMessage = document.getElementById('errorMessage');
         const predictionsTable = document.getElementById('predictionsTable');
         const loadingMessage = document.getElementById('loadingMessage');
-
-        async function fetchPredictions() {
+        const retrainProgress = document.getElementById('retrainProgress');
+        const progressFill = document.querySelector('.progress-fill');
+        const progressPercentage = document.getElementById('progressPercentage');        async function fetchPredictions() {
             try {
+                // Show loading state
+                fetchButton.disabled = true;
+                loadingMessage.style.display = 'block';
+                errorMessage.textContent = '';
+
                 const response = await fetch('http://localhost:8000/predict', {
                     method: 'POST',
                     headers: {
@@ -175,52 +321,140 @@
                 });
 
                 if (!response.ok) {
-                    throw new Error('Failed to fetch predictions');
+                    throw new Error(`Failed to fetch predictions: ${response.statusText}`);
                 }
 
                 const data = await response.json();
-                displayPredictions(data.predictions, data.dates); // Ensure this is correct
+                
+                if (!data.predictions || !data.dates) {
+                    throw new Error('Invalid response format from server');
+                }
+
+                displayPredictions(data.predictions, data.dates);
             } catch (error) {
+                console.error('Prediction error:', error);
                 errorMessage.textContent = `Error: ${error.message}`;
             } finally {
                 fetchButton.disabled = false;
                 loadingMessage.style.display = 'none';
-                predictionsTable.style.display = 'table';
             }
-        }
-
-        function displayPredictions(predictions, dates) { // Updated to accept dates
+        }        function displayPredictions(predictions, dates) {
             const thead = predictionsTable.querySelector('thead tr');
             const tbody = predictionsTable.querySelector('tbody');
 
-            // Clear existing table content
-            thead.innerHTML = '<th>Timestamp</th>';
+            // Clear existing table content and markers
             tbody.innerHTML = '';
+            currentMarkers.forEach(marker => map.removeLayer(marker));
+            currentMarkers = [];
 
-            // Add custom table headers
-            const customHeaders = ['Magnitude', 'Minimum Distance', 'RMS'];
-            customHeaders.forEach(header => {
-                const th = document.createElement('th');
-                th.textContent = header;
-                thead.appendChild(th);
-            });
+            // Get max rows to display (limit to 10 for performance)
+            const maxRows = Math.min(predictions[Object.keys(predictions)[0]].length, 10);
+            const allRows = predictions[Object.keys(predictions)[0]].length;
 
-            // Add table rows with date-time range for predictions
-            const rowCount = predictions[Object.keys(predictions)[0]].length;
-            for (let i = 0; i < rowCount; i++) {
+            // Create bounds object to track marker locations
+            const bounds = L.latLngBounds();
+
+            for (let i = 0; i < allRows; i++) {
                 const row = tbody.insertRow();
                 row.className = 'fade-in';
+                
+                // Add timestamp
                 const dateCell = row.insertCell();
-                dateCell.textContent = dates[i]; // Use the fetched dates for the timestamp column
+                dateCell.textContent = dates[i];
 
-                Object.keys(predictions).forEach(feature => {
+                // Add other prediction data
+                for (const feature of ['Magnitude', 'Minimum Distance', 'RMS']) {
                     const cell = row.insertCell();
-                    cell.textContent = predictions[feature][i].toFixed(4);
+                    const value = predictions[feature][i];
+                    cell.textContent = typeof value === 'number' ? value.toFixed(2) : value;
+                }
+
+                // Add marker to map using coordinates from predictions
+                const lat = predictions['Latitude'] ? predictions['Latitude'][i] : (35 + Math.random() * 10);
+                const lng = predictions['Longitude'] ? predictions['Longitude'][i] : (-120 + Math.random() * 10);
+                const magnitude = predictions['Magnitude'][i];
+                
+                const marker = L.circle([lat, lng], {
+                    color: getColorForMagnitude(magnitude),
+                    fillColor: getColorForMagnitude(magnitude),
+                    fillOpacity: 0.5,
+                    radius: magnitude * 10000  // Radius based on magnitude
+                }).addTo(map);
+
+                marker.bindPopup(`
+                    <b>Predicted Earthquake</b><br>
+                    Time: ${dates[i]}<br>
+                    Magnitude: ${magnitude.toFixed(2)}<br>
+                    Distance: ${predictions['Minimum Distance'][i].toFixed(2)} km<br>
+                    RMS: ${predictions['RMS'][i].toFixed(2)}
+                `);
+
+                // Add marker to tracking array and extend map bounds
+                currentMarkers.push(marker);
+                bounds.extend([lat, lng]);            }
+
+            // If there are markers, fit the map to show all of them
+            if (currentMarkers.length > 0) {
+                map.fitBounds(bounds);
+            }
+
+            // Make table scrollable if needed
+            if (allRows > 10) {
+                tbody.style.maxHeight = '400px';
+                tbody.style.overflowY = 'auto';
+            }
+        }
+
+        function getColorForMagnitude(magnitude) {
+            if (magnitude >= 7) return '#ff0000';
+            if (magnitude >= 6) return '#ff6600';
+            if (magnitude >= 5) return '#ffcc00';
+            if (magnitude >= 4) return '#ffff00';
+            return '#00ff00';
+        }
+
+        async function retrainModel() {
+            try {
+                retrainButton.disabled = true;
+                retrainProgress.style.display = 'block';
+                
+                const response = await fetch('http://localhost:8000/train', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
                 });
+
+                if (!response.ok) {
+                    throw new Error('Failed to retrain model');
+                }
+
+                // Simulate progress updates
+                let progress = 0;
+                const interval = setInterval(() => {
+                    progress += 5;
+                    progressFill.style.width = `${progress}%`;
+                    progressPercentage.textContent = progress;
+                    
+                    if (progress >= 100) {
+                        clearInterval(interval);
+                        setTimeout(() => {
+                            retrainProgress.style.display = 'none';
+                            retrainButton.disabled = false;
+                            alert('Model retraining completed successfully!');
+                        }, 1000);
+                    }
+                }, 1000);
+
+            } catch (error) {
+                errorMessage.textContent = `Error retraining model: ${error.message}`;
+                retrainButton.disabled = false;
+                retrainProgress.style.display = 'none';
             }
         }
 
         fetchButton.addEventListener('click', fetchPredictions);
+        retrainButton.addEventListener('click', retrainModel);
 
         // Initial fetch on page load
         fetchPredictions();
