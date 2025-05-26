@@ -1,7 +1,17 @@
 """Helper functions"""
 
 from .utils import plot_loss
+from .datapi import (
+    url_data_call,
+    generate_url,
+    generate_url_periods,
+    callDataFetcher
+)
 
-from .datapi import url_data_call, datas
-
-__all__ =["plot_loss", "url_data_call", "datas"]
+__all__ = [
+    "callDataFetcher",
+    "plot_loss",
+    "url_data_call",
+    "generate_url",
+    "generate_url_periods"
+]
