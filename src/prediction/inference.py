@@ -6,8 +6,12 @@ import matplotlib.pyplot as plt
 
 import torch
 
-from model.model import EarthquakeModel
-from training.training_nn import (target_column, load_prep_dataset, VarTar, scale_data)
+from src.model import EarthquakeModel
+from training.training_nn import (
+    target_column,
+    load_prep_dataset,
+    VarTar, scale_data
+)
 
 # Hyperparameters
 input_size = 24
@@ -67,8 +71,6 @@ def test_step(loaded_model, model_pth):
         plt.close(fig)
 
 
-# test_step(model_pth=r'C:\Projs\COde\Earthquake\eq_prediction\earthquake_best_model.pth')
-
 def load_model():
     # Future Forecasts Generator
     model_path = r'C:\Projs\COde\Earthquake\eq_prediction\src\model\earthquake_best_model_torch.pth'
@@ -87,7 +89,7 @@ def future_forecast(model, last_sequence, scaler_X, scaler_Y, num_days, target_c
     current_sequence = last_sequence.copy()
     forecasts = [] 
     with torch.no_grad():
-        for _ in range(num_days * 24):
+        for _ in range(int(num_days * 24)):
             inputs = torch.FloatTensor(current_sequence).unsqueeze(0).to("cuda")
             output = model(inputs)
             forecasts.append(output.cpu().numpy()[0])
@@ -103,16 +105,15 @@ def future_forecast(model, last_sequence, scaler_X, scaler_Y, num_days, target_c
 
 def generateDateRange(num_days, X1):
     last_date = pd.to_datetime(X1.index[-1])
-    return pd.date_range(start=last_date + pd.Timedelta(hours=1), periods=(num_days * 24), freq='h')
-
-## TODO:Update the DateRange Generation function for predictions generation and Date range geenration funtion for the TImestamps columns  
+    return pd.date_range(start=last_date + pd.Timedelta(hours=1), periods=(int(num_days * 24)), freq='h')
+     
 
 def generate_future_predictions(data: bool, num_days=2):
         num_days = num_days
 
         if data:
             # Loading the data for last sequence
-            X1, Y1 = VarTar(load_prep_dataset())
+            X1, Y1 = VarTar(load_prep_dataset(training=True))
 
             last_sequence = X1[-1:]
             model = load_model()
@@ -121,21 +122,27 @@ def generate_future_predictions(data: bool, num_days=2):
         
             future_predictions = future_forecast(model, np.array(last_sequence), scaler_X, scaler_Y, num_days, target_column)
             
-            future_dates = generateDateRange(2, X1)
+            future_dates = generateDateRange(num_days, X1)
             future_df = pd.DataFrame(future_predictions, columns=target_column, index=future_dates)
             # future_df.to_csv('eq_forecasts_after31122023.csv')
             return future_df, future_dates
         else: 
+            # Loading the data for last sequence
+            X1, Y1 = VarTar(load_prep_dataset(training=False))
+
+            last_sequence = X1[-1:]
             model = load_model()
 
             scaler_X, scaler_Y = scale_data(X1, Y1)[1], scale_data(X1, Y1)[3]
         
             future_predictions = future_forecast(model, np.array(last_sequence), scaler_X, scaler_Y, num_days, target_column)
             
-            future_dates = generateDateRange(2)
+            future_dates = generateDateRange(num_days, X1)
             future_df = pd.DataFrame(future_predictions, columns=target_column, index=future_dates)
+            # future_df.to_csv('eq_forecasts_after31122023.csv')
             return future_df, future_dates
 
 
 if __name__ =='__main__':
-    preds = generate_future_predictions(data=True, num_days = 0.5)
+    preds = generate_future_predictions(data=False, num_days = 1)
+    print(preds)
