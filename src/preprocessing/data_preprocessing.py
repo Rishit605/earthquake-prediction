@@ -10,54 +10,41 @@ import geopandas as gpd
 
 from sklearn.preprocessing import LabelEncoder, MinMaxScaler
 
-from src.helpers import url_data_call, datas
+# from src.helpers import url_data_call, generate_url_periods
 
 
 ## DEFINING THE PREPROCESSING FUNCTION
 def data_preprocessing(dataframe, ts=False) -> pd.DataFrame:
-    data2 = dataframe.drop(columns=[
-        'tz', 'url',
-        'detail', 'felt', 
-        'cdi', 'mmi', 'alert',
-        'status', 'tsunami', 'sig',
-        'net', 'code', 'ids',
-        'sources', 'sources', 'nst',
+    # Drop columns in a single operation
+    columns_to_drop = [
+        'tz', 'url', 'detail', 'felt', 'cdi', 'mmi', 'alert', 'status',
+        'tsunami', 'sig', 'net', 'code', 'ids', 'sources', 'nst',
         'title', 'types', 'gap', 'updated'
-    ])
- 
-    eq_data = data2.loc[data2['type'] == 'earthquake']
-
-    eq_data = eq_data.copy()
-    eq_data.drop('type', axis=1, inplace=True)
-
-    eq_data['time'] = pd.to_datetime(eq_data['time'], unit='ms')
-    # eq_data['updated'] = pd.to_datetime(eq_data['updated'], unit='ms')
-
-    eq_data['coords'] = eq_data['geo'].apply(lambda geom: list(geom.coords))
-
-    x = []
-    y = []
-    z = []
-
-    for coord_vals in eq_data['coords']:
-        x.append(coord_vals[0][0])
-        y.append(coord_vals[0][1])
-        z.append(coord_vals[0][2])
-
-    eq_data['longitude'] = x
-    eq_data['latitude'] = y
-    eq_data['elevation'] = z
-
-    eq_data.drop(columns=['place', 'geo', 'coords'], inplace=True)
-
-    if ts is True:
-        eq_data.sort_values('time', inplace=True)
-        eq_data = eq_data.set_index('time')
+    ]
+    data2 = dataframe.drop(columns=columns_to_drop, errors='ignore')
     
-        return eq_data
-    else:
-        eq_data.sort_values('time', inplace=True)
-        return eq_data
+    # Filter earthquakes using boolean indexing
+    eq_data = data2[data2['type'] == 'earthquake'].copy()
+    eq_data.drop('type', axis=1, inplace=True)
+    
+    # Convert time more efficiently
+    eq_data['time'] = pd.to_datetime(eq_data['time'], unit='ms')
+    
+    # Extract coordinates using vectorized operations
+    coords = np.array([list(geom.coords[0]) for geom in eq_data['geo']])
+    eq_data['longitude'] = coords[:, 0]
+    eq_data['latitude'] = coords[:, 1]
+    eq_data['elevation'] = coords[:, 2]
+    
+    # Drop remaining columns
+    eq_data.drop(columns=['place', 'geo'], inplace=True)
+    
+    # Sort values
+    eq_data.sort_values('time', inplace=True)
+    
+    if ts:
+        return eq_data.set_index('time')
+    return eq_data
 
 
 ## DATA TRRANSFORMATION
