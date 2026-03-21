@@ -28,7 +28,7 @@ You can access the live predictions through this web app [here - To be Added]()
 `$ pip install -r requirements.txt` (If error occurs in installation, upgrade pip and debug accordingly)
 
 ## Usage
-Run the application with `$ python -m src.predictions.inference.py` i.e. in the root directory of the project repo.
+Run inference with `$ python -m src.prediction.inference` in the project root.
 
 ### Dataset
 
