@@ -4,6 +4,7 @@ from pydantic import BaseModel
 
 import os
 from typing import List, Dict
+from pathlib import Path
 
 import comet_ml
 from comet_ml import Experiment
@@ -47,6 +48,8 @@ app.add_middleware(
 )
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+PROJECT_ROOT = Path(__file__).resolve().parent
+MODEL_DIR = PROJECT_ROOT / "src" / "model"
 
 def load_model(model_path: str) -> tuple:
     try:
@@ -143,7 +146,7 @@ async def training():
     criterion = nn.HuberLoss()
 
     # Callbacks
-    model_checkpoint = ModelCheckPoint(file_path=r'C:\Projs\COde\Earthquake\eq_prediction\src\model\earthquake_best_model3.pth', verbose=True)
+    model_checkpoint = ModelCheckPoint(file_path=str(MODEL_DIR / "earthquake_best_model3.pth"), verbose=True)
     early_stopping = Early_Stopping(patience=20, verbose=True)
 
     # Training loop
@@ -156,7 +159,7 @@ async def training():
 
     # Testing phase
     with experiment.test():
-        test_step(model, model_pth=r'C:\Projs\COde\Earthquake\eq_prediction\src\model\earthquake_best_model2.pth', scaler_Y=scaler_Y)
+        test_step(model, model_pth=str(MODEL_DIR / "earthquake_best_model2.pth"), scaler_Y=scaler_Y)
 
     # Log final metrics
     experiment.log_metric("final_train_loss", train_losses[-1])

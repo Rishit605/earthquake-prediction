@@ -1,4 +1,5 @@
 import os, sys
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -21,6 +22,8 @@ output_size = len(target_column)
 dropout_prob = 0.35
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu") # Setting the device
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+MODEL_DIR = PROJECT_ROOT / "src" / "model"
 
 # Test Step
 def test_step(loaded_model, model_pth):
@@ -73,11 +76,11 @@ def test_step(loaded_model, model_pth):
 
 def load_model():
     # Future Forecasts Generator
-    model_path = r'C:\Projs\COde\Earthquake\eq_prediction\src\model\earthquake_best_model_torch.pth'
+    model_path = MODEL_DIR / "earthquake_best_model_torch.pth"
 
     try:
         model = EarthquakeModel(input_size, hidden_size, num_layers, output_size, dropout_prob=dropout_prob).to(device)
-        model.load_state_dict(torch.load(model_path))
+        model.load_state_dict(torch.load(str(model_path)))
         print("Model loaded successfully!")
         return model
     except Exception as e:

@@ -1,5 +1,6 @@
 import os 
 import sys
+from pathlib import Path
 
 import comet_ml
 from comet_ml import Experiment
@@ -25,6 +26,8 @@ from src.preprocessing import *
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu") # Setting the device
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+MODEL_DIR = PROJECT_ROOT / "src" / "model"
 
 #1 This function calls the data from the url and performs basic preprocessing.
 def raw_data_prep(TimeSeries: bool, save: bool = False, training: bool = True) -> pd.DataFrame:
@@ -436,10 +439,13 @@ if __name__ == "__main__":
     }
 
     # Initialize Comet ML experiment
+    comet_api_key = os.environ.get("API_KEY")
+    comet_project_name = os.environ.get("PROJECT_NAME", "earthquake-preds")
+    comet_workspace = os.environ.get("WORKSPACE")
     experiment = Experiment(
-        api_key="WzhQCnsnCgodHTTrGLeFORixh",
-        project_name="earthquake-preds",
-        workspace="vintagep"
+        api_key=comet_api_key,
+        project_name=comet_project_name,
+        workspace=comet_workspace
     )
     
     # Log hyperparameters to Comet ML
@@ -475,7 +481,7 @@ if __name__ == "__main__":
     criterion = nn.HuberLoss()
 
     # Callbacks
-    model_checkpoint = ModelCheckPoint(file_path=r'C:\Projs\COde\Earthquake\eq_prediction\src\model\earthquake_best_model_torch.pth', verbose=True)
+    model_checkpoint = ModelCheckPoint(file_path=str(MODEL_DIR / "earthquake_best_model_torch.pth"), verbose=True)
     early_stopping = Early_Stopping(patience=20, verbose=True)
 
     # Training loop
@@ -488,7 +494,7 @@ if __name__ == "__main__":
 
     # Testing phase
     with experiment.test():
-        test_step(model, model_pth=r'C:\Projs\COde\Earthquake\eq_prediction\src\model\earthquake_best_model3.pth', scaler_Y=scaler_Y)
+        test_step(model, model_pth=str(MODEL_DIR / "earthquake_best_model3.pth"), scaler_Y=scaler_Y)
 
     # Log final metrics and plots
     log_model(experiment, model, model_name="earthquake_model3")
