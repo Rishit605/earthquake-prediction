@@ -18,6 +18,8 @@ from torch.utils.data import DataLoader, TensorDataset
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from dotenv import load_dotenv
 
+from src.helpers.datapi import callDataFetcher
+
 from src.training.training_nn import (
     DataLoader_Conversion, load_prep_dataset,
     EPOCHS, LEARNING_RATE, BATCH_SIZE,
@@ -79,6 +81,9 @@ class PredictionRequest(BaseModel):
 class PredictionResponse(BaseModel):
     predictions: Dict[str, List[float]]
     dates: List[str]  # Added to include future dates
+
+
+# def model_creation():
 
 # Training Protocol
 @app.post("/train")
@@ -193,4 +198,4 @@ async def predict():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
