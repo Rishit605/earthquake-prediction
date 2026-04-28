@@ -4,9 +4,13 @@ import pandas as pd
 import geojson
 import requests
 import geopandas as gpd
+from shapely.wkt import loads
 from datetime import datetime, timedelta
 from typing import Dict, Optional
+from pathlib import Path
 
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DATA_PATH = PROJECT_ROOT / "data" / f"eq_data_updated2.csv"
 
 def generate_url(start_date: str, end_date: str, min_magnitude: float = 2.5) -> str:
     """Generate USGS earthquake data URL for given date range."""
@@ -51,6 +55,12 @@ def generate_url_periods(start_year: Optional[int] = None,
     
     return urls
 
+
+def data_geo_ready(dataframe: pd.DataFrame) -> pd.DataFrame:
+    dataframe['geo'] = dataframe['geo'].apply(loads)
+    gdf = gpd.GeoDataFrame(dataframe)
+    return gdf
+
 def url_data_call(url: Optional[str] = None, save: bool = False) -> pd.DataFrame:
     """
     Fetch earthquake data either from stored CSV or from USGS API.
@@ -64,9 +74,8 @@ def url_data_call(url: Optional[str] = None, save: bool = False) -> pd.DataFrame
     """
     if save:
         try:
-            df = pd.read_csv(r"eq_prediction\data\eq_data_updated.csv")
-            # gdf = df.rename(columns={'geometry': 'geo'})
-            return df
+            df = pd.read_csv(DATA_PATH)
+            return data_geo_ready(df)
         except FileNotFoundError:
             print("Stored data file not found. Fetching from API instead.")
     
@@ -92,13 +101,14 @@ def url_data_call(url: Optional[str] = None, save: bool = False) -> pd.DataFrame
         print(f"Error fetching data from API: {e}")
         return pd.DataFrame()  # Return empty DataFrame on error
 
-def callDataFetcher() -> pd.DataFrame:
+def callDataFetcher(saved: bool) -> pd.DataFrame:
     # Generate URLs for the last 5 years up to current date
-    data_urls = generate_url_periods(start_year=2020, end_year=2024)
+    data_urls = generate_url_periods(start_year=2022, end_year=2026)
 
-    if os.path.exists(os.path.join(r"eq_prediction\data", "eq_data_updated.csv")):
-        return url_data_call(save=True)
+    if DATA_PATH.exists() and saved:
+        return url_data_call(save=saved)
     else:
+        print("Data not found, in the directory.\nFetching data from API...")
         # Fetch and combine data from all periods
         earthquake_data = []
         for period, url in data_urls.items():
@@ -110,13 +120,17 @@ def callDataFetcher() -> pd.DataFrame:
         if earthquake_data:
             # Save the data to the directory
             gdf =  pd.concat(earthquake_data, ignore_index=True)
-            gdf.to_csv(os.path.join(r"eq_prediction\data", "eq_data_updated.csv"), index=False)
+            gdf.to_csv(DATA_PATH, index=False)
             return gdf
 
 
 if __name__ == "__main__":
     
-    eq_Data = callDataFetcher()
+    eq_Data = callDataFetcher(False)
+    # print((Path.cwd().parents[1] / "data" / "eq_data_updated.csv").exists())
+    # print(Path.cwd().parent[1] / "data" / "eq_data_updated.csv")
+    # print(Path.cwd().parent[1] / "data" / "eq_data_updated.csv".exists())
+    # print(Path.cwd().parent[1] / "data" / "eq_data_updated.csv".exists())
 
     # Uncomment to save to CSV
     # all_data.to_csv(r".\data\earthqukae_data.csv", index=False)
