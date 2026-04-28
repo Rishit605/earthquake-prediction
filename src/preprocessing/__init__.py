@@ -6,9 +6,8 @@ Contains functionality for loading, cleaning, processing and normalizing earthqu
 from .data_preprocessing import (
     data_preprocessing,
     imput_encode,
-    var_and_tar,
-    split_dataset,
-    scaler_dataset,
+    Data_Sets,
+    DataScaler,
     CyclicTimeTransform,
     EnhancedCyclicTimeTransform,
     SingleStepMultiVARS_SeperateSampler,
@@ -22,8 +21,8 @@ from .data_preprocessing import (
 __all__ = [
     'data_preprocessing',
     'imput_encode',
-    'var_and_tar',
-    'split_dataset',
+    'Data_Sets',
+    'DataScaler',
     'scaler_dataset',
     'CyclicTimeTransform',
     'EnhancedCyclicTimeTransform',
