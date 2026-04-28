@@ -135,7 +135,7 @@ def feature_selection(df: pd.DataFrame) -> pd.DataFrame:
 window_size = 7 * 24
 target_column = ['mag', 'dmin', 'rms']
 
-EPOCHS = 50
+EPOCHS = 10
 BATCH_SIZE = 128
 LEARNING_RATE = 0.001
 
@@ -145,7 +145,7 @@ def load_prep_dataset(save: bool = False, training: bool = True) -> pd.DataFrame
         print("Loading and preprocessing dataset for the first time...")
         global cached_df
         df = raw_data_prep(TimeSeries=False, save=save, training=training)
-        df = event_counts_for_diff_window2(dataFrame=df)
+        df = event_counts_for_diff_window2(dataFrame=df, filler='mean')
         df = rolling_windows(new_df=df)
         df = feature_engineering(df)
         df = feature_selection(df)
@@ -259,9 +259,8 @@ def DataLoader_Conversion(data, test_data: bool = True) -> tuple:
     # print(type(cached_splits))
 
 # Training step for the Model
-scaler = GradScaler()
 def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler, num_epochs, early_stopping, checkpoint, experiment, logging=True ):
-    
+    scaler = GradScaler()    
     if logging:
         with experiment.train():
             train_losses = []
