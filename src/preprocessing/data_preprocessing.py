@@ -125,7 +125,7 @@ class EQDataLoader:
         final_data = og_data.combine_first(ref_df).loc[og_data.index]
         final_data.drop('nst', axis=1, inplace=True)
         final_data.drop('detail', axis=1, inplace=True)
-        final_data.dropna(inplace=True)
+        # final_data.dropna(inplace=True)
         
         if ts:
             final_data['time'] = pd.to_datetime(final_data['time'], unit='ms')
@@ -156,7 +156,7 @@ class EQDataLoader:
             final_data = final_df.combine_first(ref_df).loc[final_df.index]
             final_data.drop('nst', axis=1, inplace=True)
             final_data.drop('detail', axis=1, inplace=True)
-            # final_data.dropna(inplace=True)
+            final_data.dropna(inplace=True)
 
         else:
             print("New Data is called")
@@ -179,20 +179,22 @@ class EQDataLoader:
 
 
 class ZScoreStandard:
-    def __init__(self, dataframe) -> None:
+    def __init__(self, dataframe, cols) -> None:
         self.dataframe = dataframe
         self.scale_params = {}
+        self.cols = cols
 
     def fit_standard_Z(self):
-        for col in self.dataframe.select_dtypes(exclude="object").columns:
-            mean = find_mean(self.dataframe[col])
-            std  = np.sqrt(find_variance(self.dataframe[col]))
-            self.scale_params[col] = (mean, std)
-            self.dataframe[col] = (self.dataframe[col] - mean) / std
+        for col in self.cols:
+            if col in self.dataframe.select_dtypes(exclude="object").columns:
+                mean = find_mean(self.dataframe[col])
+                std  = np.sqrt(find_variance(self.dataframe[col]))
+                self.scale_params[col] = (mean, std)
+                self.dataframe[col] = (self.dataframe[col] - mean) / std
         return self.dataframe
 
     def transform_standard_Z(self, data, _params=None):
-        if self.dataframe.shape != data.shape:
+        if self.dataframe.shape[1] != data.shape[1]:
             raise pd.errors.DataError("Dataframes miss-match, please verify if the dataframe are of the correct size.")
 
         scale_params = self.scale_params if _params is None else _params
@@ -203,14 +205,14 @@ class ZScoreStandard:
         
 
 class DataPreprocessor:
-    def __init__(self, dataframe: pd.DataFrame):
+    def __init__(self, dataframe: pd.DataFrame) -> pd.DataFrame:
         self.dataframe = dataframe
 
     def _log_transform(self):
         # Log-Transformation of Skewed Columns
         for col in ['dmin_km', 'elevation']:
             def safe_log(x):
-                return np.log(x) if pd.notnull(x) and x > 0 else x
+                return np.log(x+1) if pd.notnull(x) and x > 0 else x
             self.dataframe[col] = self.dataframe[col].apply(safe_log)
         print("Log Transformation Used!")
         return self.dataframe
@@ -231,15 +233,36 @@ class DataPreprocessor:
         return self.dataframe
 
 
-    def data_transform(self, log_t=True, sqaure=True):
+    def imput_data_transform(self, transform=True, log_t=True, square=True, dmin_convert=True) -> pd.DataFrame:
+        # 'dmin' columns conversion
+        if dmin_convert:
+            if 'dmin' not in self.dataframe.columns:
+                raise KeyError("'dmin' column not found in the dataframe.")
+       
+            self.dataframe['dmin_km'] = self.dataframe['dmin'].apply(lambda x: x * 111.19)
+            self.dataframe = self.dataframe.drop('dmin', axis=1)
+ 
+
+        if transform:
+            if log_t:
+                return self._log_transform()
+            else:
+                return self._root_transform(sq=square)
+            
+        return self.dataframe
+
+    def data_transform(self, transform=True, log_t=True, square=True) -> pd.DataFrame:
         # 'dmin' columns conversion
         self.dataframe['dmin_km'] = self.dataframe['dmin'].apply(lambda x: x * 111.19)
         self.dataframe = self.dataframe.drop('dmin', axis=1)
 
-        if log_t:
-            return self._log_transform()
-        else:
-            return self._root_transform(sq=sqaure)
+        if transform:
+            if log_t:
+                return self._log_transform()
+            else:
+                return self._root_transform(sq=square)
+            
+        return self.dataframe
 
 
 class ExperimentalDataPreprocessor:
@@ -276,16 +299,34 @@ class ExperimentalDataPreprocessor:
             self.dataframe[col] = self.dataframe[col].apply(lambda x: (x - mean) / std)        
         return self.dataframe
 
-    def data_transform(self, cols: List[str], log_t=True):
+    def data_transform(self, cols: List[str], log_t=True, square=True):
         # 'dmin' columns conversion
         self.dataframe['dmin_km'] = self.dataframe['dmin'].apply(lambda x: x * 111.19)
         self.dataframe = self.dataframe.drop('dmin', axis=1)
 
         if log_t:
-            return self._log_transform_cols()
+            return self._log_transform_cols(cols=cols)
         else:
-            return self._root_transform_cols()
+            return self._root_transform_cols(cols=cols, sq=square)
 
+
+    def imput_data_transform(self, cols, transform=True, log_t=True, square=True, dmin_convert=True) -> pd.DataFrame:
+        # 'dmin' columns conversion
+        if dmin_convert:
+            if 'dmin' not in self.dataframe.columns:
+                raise KeyError("'dmin' column not found in the dataframe.")
+       
+            self.dataframe['dmin_km'] = self.dataframe['dmin'].apply(lambda x: x * 111.19)
+            self.dataframe = self.dataframe.drop('dmin', axis=1)
+ 
+
+        if transform:
+            if log_t:
+                return self.log_transform_cols(cols=cols)
+            else:
+                return self.root_transform_cols(cols=cols, sq=square)
+            
+        return self.dataframe
 
 class BackupFunctions: 
     ## DEFINING THE PREPROCESSING FUNCTION
@@ -341,6 +382,9 @@ class BackupFunctions:
 
 
 def drop_rate_new(data) -> List:
+    """
+    Returns the list of names of colums to be dropped
+    """
     cols = []
     if data is None or not hasattr(data, "isnull") or not hasattr(data, "select_dtypes"):
         raise ValueError("Input argument 'data' must be a pandas DataFrame.")
@@ -480,7 +524,10 @@ def imput_encode(data): # Currently not in use
 
 class Data_Sets:
     @staticmethod
-    def split_dataset(data, size=0.7):
+    def split_dataset(
+        data,
+        size=0.7
+    ):
         """
         Splits the dataset into train, validation, and test sets.
 
@@ -512,7 +559,8 @@ class Data_Sets:
         target_col: str = 'mag',
         train_frac=0.7,
         validation_flag=False,
-        test_flag=False
+        test_flag=False,
+        set_split=True
     ):
         """
         Splits a DataFrame into (X, y) training, validation, or test sets
@@ -525,21 +573,56 @@ class Data_Sets:
         if not (0 < train_frac < 1):
             raise ValueError("train_frac must be between 0 and 1.")
 
-        # Reuse existing split logic (no duplicate index calculations)
-        train_df, val_df, test_df = Data_Sets.split_dataset(df, size=train_frac)
+        if set_split:
+            # Reuse existing split logic (no duplicate index calculations)
+            train_df, val_df, test_df = Data_Sets.split_dataset(df, size=train_frac)
 
-        # Select which split to use
-        if validation_flag:
-            chosen_df = val_df
-        elif test_flag:
-            chosen_df = test_df
+            # Select which split to use
+            if validation_flag:
+                chosen_df = val_df
+            elif test_flag:
+                chosen_df = test_df
+            else:
+                chosen_df = train_df  # default train
         else:
-            chosen_df = train_df  # default train
+            chosen_df = df
 
         X = chosen_df.drop(columns=[target_col])
         y = chosen_df[target_col]
         return X, y
 
+    
+    
+    
+    @staticmethod
+    def stratify_split(df, shuffle: bool = True, strat_col: str = 'gap_missing'):  
+        from sklearn.model_selection import train_test_split
+
+        data = df.copy()
+        data["gap_missing"] = data["gap"].isna().astype(int)
+
+        # If shuffle is False, stratify must also be None or shuffle must be True when using stratify
+        if not shuffle:
+            # If shuffle is False, stratify must be None for sklearn's train_test_split
+            if strat_col is not None:
+                raise ValueError("Stratified split requires shuffle=True in train_test_split. Please set shuffle=True if stratifying.")
+            else:
+                train_df, pred_df = train_test_split(
+                    data,
+                    test_size=0.2,
+                    random_state=42,
+                    shuffle=False,
+                    stratify=None
+                )
+        else:
+            train_df, pred_df = train_test_split(
+                data,
+                test_size=0.2,
+                random_state=42,
+                shuffle=True,
+                stratify=data[strat_col] if strat_col is not None else None  # stratify only if provided
+            )
+        return train_df, pred_df
 
 class DataScaler:
     def cus_Scaler():
