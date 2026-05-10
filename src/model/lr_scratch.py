@@ -11,17 +11,35 @@ class LinearR:
         self.tol = tolerance
         self.total_cost = []
 
-    def matrix_conversion(self, X, y):
+    def matrix_conversion(self, X, y, training=True):
         bias = pd.Series(np.ones(X.shape[0]))
         dep = X.to_numpy()
         X = np.column_stack((bias, dep))
-        y = y.to_numpy()
+
+        if not training:
+            return X
+        else:
+            if y is None or (hasattr(y, "empty") and y.empty):
+                raise ValueError(f"{y} is empty.")
+                
+            y = y.to_numpy() 
+
+            # return [fin_dep.shape, self.train_var.shape]
+            return X, y
+
+
+    def bkp_matrix_conversion(self, X, y=None, training=True):
+        bias = pd.Series(np.ones(X.shape[0]))
+        dep = X.to_numpy()
+        X = np.column_stack((bias, dep))            
+        y = y.to_numpy() 
 
         # return [fin_dep.shape, self.train_var.shape]
         return X, y
 
     def model_parameters(self, data):
-        self.theta = np.zeros(data.shape[1])
+        self.theta = np.random.uniform(-1, 1, size=data.shape[1])
+   
 
     def forward_pass(self, X, theta):
         return np.dot(X, theta)
@@ -68,19 +86,19 @@ class LinearR:
                 break
                 
             self.total_cost.append(new_cos)
-            if i % 100 == 0:
+            if i % 10000 == 0:
                 print(f" \nIteration #{i} with cost {new_cos}")
                 # print(f" Iteration #{i} Cost difference to Tolerence: {self.total_cost[-1] - new_cos}   <---->   {self.tol}")
 
         print("Training Ended!")
 
-    def predict(self, X, y):
-        X, y = self.matrix_conversion(X, y)
+    def predict(self, X):
+        X = self.matrix_conversion(X, 0, training=False)
         # Assert that X is a numpy array
         assert isinstance(X, np.ndarray), "X must be a numpy array"
         # Check that X has the correct number of features
         assert X.shape[1] == self.theta.shape[0], f"Number of features in X ({X.shape[1]}) must match the number of model parameters ({self.theta.shape[0]})"
-        return np.dot(X, self.theta)
+        return self.forward_pass(X, self.theta)
 
 if __name__=="__main__":
     pass
