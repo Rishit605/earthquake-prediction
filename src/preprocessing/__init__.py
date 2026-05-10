@@ -4,7 +4,6 @@ Contains functionality for loading, cleaning, processing and normalizing earthqu
 """
 
 from .data_preprocessing import (
-    data_preprocessing,
     imput_encode,
     Data_Sets,
     DataScaler,
@@ -19,7 +18,6 @@ from .data_preprocessing import (
 )
 
 __all__ = [
-    'data_preprocessing',
     'imput_encode',
     'Data_Sets',
     'DataScaler',
