@@ -1,23 +1,30 @@
 import os, sys
+from pathlib import Path
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.model.model import EarthquakeModel
-from main import load_model, get_load_dataset  # Import the load_dataset function
-from src.prediction.inference import (
-    input_size, 
-    hidden_size,
-    num_layers,
-    output_size,
-    dropout_prob
-)
+import pandas as pd
 
 import unittest
 import torch
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+MODEL_PATH = PROJECT_ROOT / "src" / "model" / "earthquake_best_model.pth"
+
 class TestLoadModel(unittest.TestCase):
+    from src.model.model import EarthquakeModel
+    # from main import load_model, get_load_dataset  # Import the load_dataset function
+    from src.prediction.inference import (
+        input_size, 
+        hidden_size,
+        num_layers,
+        output_size,
+        dropout_prob
+    )
+
     def setUp(self):
         # Set up any necessary variables or paths
-        self.model_path = r"C:\Projs\COde\Earthquake\eq_prediction\src\model\earthquake_best_model.pth"
+        self.model_path = str(MODEL_PATH)
         self.device = False
 
     def test_load_existing_model(self):
@@ -30,7 +37,7 @@ class TestLoadModel(unittest.TestCase):
 
     def test_load_nonexistent_model(self):
         # Test loading a nonexistent model
-        nonexistent_path = r"C:\Projs\COde\Earthquake\eq_prediction\src\model\earthquake_best_model.pth"
+        nonexistent_path = str(PROJECT_ROOT / "src" / "model" / "does_not_exist.pth")
         model, success = load_model(nonexistent_path)
         self.assertFalse(success, "Model loading should fail for nonexistent path")
         self.assertIsNone(model, "Model should be None when loading fails")
@@ -44,6 +51,18 @@ class TestLoadModel(unittest.TestCase):
         self.assertGreater(len(train_dataloader.dataset), 0, "Training dataset should not be empty")
         self.assertGreater(len(valid_dataloader.dataset), 0, "Validation dataset should not be empty")
         self.assertGreater(len(test_dataloader.dataset), 0, "Testing dataset should not be empty")
+
+
+class TestDataFetcher(unittest.TestCase):
+    from src.helpers.datapi import callDataFetcher
+    def setUp(self):
+        self.data_fetcher = self.callDataFetcher()
+
+    def test_data_fetcher(self):
+        self.assertIsNotNone(self.data_fetcher, "Data fetcher should not be None")
+        self.assertIsInstance(self.data_fetcher, pd.DataFrame, "Data fetcher should be a pandas DataFrame")
+        self.assertGreater(len(self.data_fetcher), 0, "Data fetcher should not be empty")
+
 
 if __name__ == "__main__":
     unittest.main()
