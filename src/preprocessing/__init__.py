@@ -4,11 +4,9 @@ Contains functionality for loading, cleaning, processing and normalizing earthqu
 """
 
 from .data_preprocessing import (
-    data_preprocessing,
     imput_encode,
-    var_and_tar,
-    split_dataset,
-    scaler_dataset,
+    Data_Sets,
+    DataScaler,
     CyclicTimeTransform,
     EnhancedCyclicTimeTransform,
     SingleStepMultiVARS_SeperateSampler,
@@ -19,11 +17,22 @@ from .data_preprocessing import (
     rolling_windows
 )
 
+from .data_imputation_model import (
+    DEFAULT_IMPUTE_COLS,
+    get_enc,
+    prep_impute_data,
+    ImputationStats,
+    KNNImpute,
+    C_KNN,
+    ModelDataReCourse,
+    RidgeRegressionImputer,
+    ModelImputation,
+)
+
 __all__ = [
-    'data_preprocessing',
     'imput_encode',
-    'var_and_tar',
-    'split_dataset',
+    'Data_Sets',
+    'DataScaler',
     'scaler_dataset',
     'CyclicTimeTransform',
     'EnhancedCyclicTimeTransform',
@@ -32,5 +41,14 @@ __all__ = [
     'spatial_temp_grid',
     'encode_lat_lon_bins',
     'event_counts_for_diff_window2',
-    'rolling_windows'
+    'rolling_windows',
+    'DEFAULT_IMPUTE_COLS',
+    'get_enc',
+    'prep_impute_data',
+    'ImputationStats',
+    'KNNImpute',
+    'C_KNN',
+    'ModelDataReCourse',
+    'RidgeRegressionImputer',
+    'ModelImputation',
 ]
