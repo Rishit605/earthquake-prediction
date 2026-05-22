@@ -266,48 +266,46 @@ class DataPreprocessor:
 
 
 class ExperimentalDataPreprocessor:
-    def __init__(self, dataframe: pd.DataFrame):
+    def __init__(self, dataframe: pd.DataFrame, custom_cols: bool = False):
         self.dataframe = dataframe
+        self.c_cols = custom_cols
+        
+    def data_transform(self, cols: list = None, square=False):
+        # If using custom columns, validate input
+        self.cols = cols if self.c_cols else None
+        if self.c_cols and cols is None:
+            raise ValueError("custom_cols is True, but no columns (`cols`) are specified for transformation.")
 
-    def log_transform_cols(self, cols):
+        # 'dmin' columns conversion
+        if 'dmin' in self.dataframe.columns:
+            self.dataframe['dmin_km'] = self.dataframe['dmin'].apply(lambda x: x * 111.19)
+            self.dataframe = self.dataframe.drop('dmin', axis=1)
+        elif 'dmin_km' in self.dataframe.columns:
+            pass  # Already in km, do nothing
+        else:
+            raise KeyError("Neither 'dmin' nor 'dmin_km' column found in the dataframe.")
+        
+
+        cols = self.dataframe.select_dtypes(include='number').columns
+        
+        # Now handle transformations based on skewness
+        # Compute skewness of numeric columns
+        skewness = self.dataframe[cols].skew()
+        # For each col, conditionally apply transformation
         for col in cols:
-            if col in self.dataframe.columns:
+            if col not in self.dataframe.columns:
+                continue
+            sk = skewness[col]
+            if sk > 1:
                 self.dataframe[col] = self.dataframe[col].apply(
                     lambda x: math.log(x + 1) if pd.notnull(x) and x > 0 else x
                 )
+            elif 0.5 < sk <= 1:
+                self.dataframe[col] = self.dataframe[col].apply(
+                    lambda x: np.sqrt(x) if pd.notnull(x) and x > 0 else x
+                )
+            # If not, leave as is
         return self.dataframe
-
-    def root_transform_cols(self, cols, sq=True):
-        for col in cols:
-            if col in self.dataframe.columns:
-                if sq:
-                    self.dataframe[col] = self.dataframe[col].apply(
-                        lambda x: np.sqrt(x) if pd.notnull(x) and x > 0 else x
-                    )
-                else:
-                    self.dataframe[col] = self.dataframe[col].apply(
-                        lambda x: np.cbrt(x) if pd.notnull(x) and x != 0 else x
-                    )
-        return self.dataframe
-
-    def standard_Z(self):
-        # Standardization
-        for col in self.dataframe.select_dtypes(exclude="object").columns:
-            mean = find_mean(self.dataframe[col])
-            std =  np.sqrt(find_variance(self.dataframe[col]))
-        #     # self.dataframe[col] = self.dataframe[col].apply(self.standard_ZS)
-            self.dataframe[col] = self.dataframe[col].apply(lambda x: (x - mean) / std)        
-        return self.dataframe
-
-    def data_transform(self, cols: List[str], log_t=True, square=True):
-        # 'dmin' columns conversion
-        self.dataframe['dmin_km'] = self.dataframe['dmin'].apply(lambda x: x * 111.19)
-        self.dataframe = self.dataframe.drop('dmin', axis=1)
-
-        if log_t:
-            return self._log_transform_cols(cols=cols)
-        else:
-            return self._root_transform_cols(cols=cols, sq=square)
 
 
     def imput_data_transform(self, cols, transform=True, log_t=True, square=True, dmin_convert=True) -> pd.DataFrame:
@@ -592,8 +590,6 @@ class Data_Sets:
         return X, y
 
     
-    
-    
     @staticmethod
     def stratify_split(df, shuffle: bool = True, strat_col: str = 'gap_missing'):  
         from sklearn.model_selection import train_test_split
@@ -624,6 +620,7 @@ class Data_Sets:
             )
         return train_df, pred_df
 
+
 class DataScaler:
     def cus_Scaler():
         pass
@@ -645,7 +642,6 @@ class DataScaler:
         scaled_dataset = scale.fit_transform(dataSet)
         scaled_dataset = pd.DataFrame(scaled_dataset, columns=dataSet.columns, index=dataSet.index)
         return scaled_dataset, scale
-    
 
 
 ## Temporal and Advanced Feature Engineering
