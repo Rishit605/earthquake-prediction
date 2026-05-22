@@ -10,3 +10,4 @@
 /src/training/__pycache__
 /src/model/__pycache__
 /src/preprocessing/__pycache__
+*.csv
