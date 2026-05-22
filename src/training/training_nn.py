@@ -1,5 +1,6 @@
 import os 
 import sys
+from pathlib import Path
 
 import comet_ml
 from comet_ml import Experiment
@@ -19,24 +20,54 @@ from torch.utils.data import DataLoader, TensorDataset
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.amp import GradScaler, autocast
 
-from src.helpers import datas, url_data_call, plot_loss
+from src.helpers import generate_url_periods, url_data_call, plot_loss
 from src.model import Early_Stopping, ModelCheckPoint, EarthquakeModel
 from src.preprocessing import *
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu") # Setting the device
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+MODEL_DIR = PROJECT_ROOT / "src" / "model"
 
 #1 This function calls the data from the url and performs basic preprocessing.
-def raw_data_prep(TimeSeries: bool, save: bool = False) -> pd.DataFrame:
+def raw_data_prep(TimeSeries: bool, save: bool = False, training: bool = True) -> pd.DataFrame:
     """
     Calls and defines the data and returns a Pandas DataFrame with basic preprocssing.
-    """
-    df = pd.concat([url_data_call(URL=datas[key], stored_data=save) for key in datas], ignore_index=True)
+    """ 
+    if training:
+        data_urls = generate_url_periods(start_year=2020, end_year=2024)
 
-    dff = data_preprocessing(df, ts=TimeSeries) ## This function performs basic proecprocessing with an option of Timeseries or not.
-    dff = imput_encode(dff) ## This function encodes and imputs the input data and fills the empty values.
+        # Fetch and combine data from all periods
+        earthquake_data = []
+        for period, url in data_urls.items():
+            print(f"Fetching data for {period}...")
+            period_data = url_data_call(url)
+            if not period_data.empty: 
+                earthquake_data.append(period_data)
+        df = pd.concat(earthquake_data, ignore_index=True)
 
-    return dff
+        dff = data_preprocessing(df, ts=TimeSeries) ## This function performs basic proecprocessing with an option of Timeseries or not.
+        dff = imput_encode(dff) ## This function encodes and imputs the input data and fills the empty values.
+
+        return dff
+
+    else:
+        data_urls = generate_url_periods(start_year=2024, end_year=2024)
+
+        # Fetch and combine data from all periods
+        earthquake_data = []
+        for period, url in data_urls.items():
+            print(f"Fetching data for {period}...")
+            period_data = url_data_call(url)
+            if not period_data.empty: 
+                earthquake_data.append(period_data)
+
+        df = pd.concat(earthquake_data, ignore_index=True)
+
+        dff = data_preprocessing(df, ts=TimeSeries) ## This function performs basic proecprocessing with an option of Timeseries or not.
+        dff = imput_encode(dff) ## This function encodes and imputs the input data and fills the empty values.
+
+        return dff
 
 # 2. This function performs feature engineering on the input dataframe.
 def feature_engineering(df: pd.DataFrame) -> pd.DataFrame:
@@ -101,27 +132,26 @@ def feature_selection(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # Defining Pararmeters
-window_size = 15 * 24
+window_size = 7 * 24
 target_column = ['mag', 'dmin', 'rms']
 
-EPOCHS = 50
-BATCH_SIZE = 64
+EPOCHS = 10
+BATCH_SIZE = 128
 LEARNING_RATE = 0.001
 
 # Optimized dataset function call to avoid multiple reloads
-def load_prep_dataset(save: bool = False) -> pd.DataFrame:
+def load_prep_dataset(save: bool = False, training: bool = True) -> pd.DataFrame:
     if 'cached_df' not in globals():
         print("Loading and preprocessing dataset for the first time...")
         global cached_df
-        df = raw_data_prep(TimeSeries=False, save=save)
-        df = event_counts_for_diff_window2(dataFrame=df)
+        df = raw_data_prep(TimeSeries=False, save=save, training=training)
+        df = event_counts_for_diff_window2(dataFrame=df, filler='mean')
         df = rolling_windows(new_df=df)
         df = feature_engineering(df)
         df = feature_selection(df)
         cached_df = df  # Cache the preprocessed dataframe
-    return cached_df
-
-
+        return cached_df
+        
 # Defining the Target(s) and Variables
 def VarTar(data) -> tuple:
     df = data
@@ -229,9 +259,8 @@ def DataLoader_Conversion(data, test_data: bool = True) -> tuple:
     # print(type(cached_splits))
 
 # Training step for the Model
-scaler = GradScaler()
 def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler, num_epochs, early_stopping, checkpoint, experiment, logging=True ):
-    
+    scaler = GradScaler()    
     if logging:
         with experiment.train():
             train_losses = []
@@ -409,10 +438,13 @@ if __name__ == "__main__":
     }
 
     # Initialize Comet ML experiment
+    comet_api_key = os.environ.get("API_KEY")
+    comet_project_name = os.environ.get("PROJECT_NAME", "earthquake-preds")
+    comet_workspace = os.environ.get("WORKSPACE")
     experiment = Experiment(
-        api_key="WzhQCnsnCgodHTTrGLeFORixh",
-        project_name="earthquake-preds",
-        workspace="vintagep"
+        api_key=comet_api_key,
+        project_name=comet_project_name,
+        workspace=comet_workspace
     )
     
     # Log hyperparameters to Comet ML
@@ -448,7 +480,7 @@ if __name__ == "__main__":
     criterion = nn.HuberLoss()
 
     # Callbacks
-    model_checkpoint = ModelCheckPoint(file_path=r'C:\Projs\COde\Earthquake\eq_prediction\src\model\earthquake_best_model_torch.pth', verbose=True)
+    model_checkpoint = ModelCheckPoint(file_path=str(MODEL_DIR / "earthquake_best_model_torch.pth"), verbose=True)
     early_stopping = Early_Stopping(patience=20, verbose=True)
 
     # Training loop
@@ -461,7 +493,7 @@ if __name__ == "__main__":
 
     # Testing phase
     with experiment.test():
-        test_step(model, model_pth=r'C:\Projs\COde\Earthquake\eq_prediction\src\model\earthquake_best_model3.pth', scaler_Y=scaler_Y)
+        test_step(model, model_pth=str(MODEL_DIR / "earthquake_best_model3.pth"), scaler_Y=scaler_Y)
 
     # Log final metrics and plots
     log_model(experiment, model, model_name="earthquake_model3")
