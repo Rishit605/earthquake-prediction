@@ -1,8 +1,10 @@
 import sys
-import warnings
 
 import pandas as pd
+import numpy as np
 from pathlib import Path
+
+from sklearn.linear_model import SGDRegressor
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 if str(PROJECT_ROOT) not in sys.path:
@@ -11,6 +13,8 @@ if str(PROJECT_ROOT) not in sys.path:
 from src.preprocessing.data_preprocessing import Data_Sets, EQDataLoader, DataPreprocessor, DataEncoder, ZScoreStandard, ExperimentalDataPreprocessor
 from src.helpers.utils import DataDist, plot_histograms
 from src.model.lr_scratch import LinearR
+from src.model.decision_tree_scratch import DecisionTreeR
+from src.helpers.utils import r2_Loss
 
 
 # Data Loading
@@ -219,7 +223,7 @@ class DataExplorer:
         
 
 class LinearRegressor:
-    def __init__(self, X_train, y_train, max_iter=1000):
+    def __init__(self, X_train, y_train, max_iter=10000):
         self.model = LinearR(X_train, y_train, max_iter)
         self.fitted = False
 
@@ -232,18 +236,109 @@ class LinearRegressor:
         if not self.fitted:
             raise RuntimeError("Model must be fitted before predicting.")
         return self.model.predict(X)
+
+    def _r2_loss(self, y_true, y_pred):
+        y_true = np.array(y_true)
+        y_pred = np.array(y_pred)
+
+        # Residual sum of squares (SSE)
+        ss_res = np.sum((y_true - y_pred) ** 2)
+        # Total sum of squares (SST)
+        ss_tot = np.sum((y_true - np.mean(y_true)) ** 2)
+
+        return 1 - (ss_res / ss_tot)
    
 
+class DTRegressor:
+    def __init__(self):        
+        self.dT = DataExplorer()
+        self.data = self.dT._get_data()
+        self.data_flag = "train"
 
-def train_and_evaluate(train_X, train_y, test_X):
-    reg = LinearRegressor(train_X, train_y, 1000)
-    reg.fit(train_X, train_y)
-    print("Predictions: ", reg.predict(test_X))
+    def data_prep(self, valid=False, test=False):
+        if valid:
+            self.data_flag = "valid"
+            return self.data['X_valid'].to_numpy(), self.data['y_valid'].to_numpy()
+        elif test:
+            self.data_flag = "test"
+            return self.data['X_test'].to_numpy(), self.data['y_test'].to_numpy()
+        else:
+            return self.data['X_train'].to_numpy(), self.data['y_train'].to_numpy()  
+
+    def _call_model(self, max_depth=3, min_sample=2):
+        train_X, train_y = self.data_prep()
+        valid_X, valid_y = self.data_prep(valid=True)
+
+        model = DecisionTreeR(max_depth=max_depth, min_sample=min_sample)
+        model.fit(train_X, train_y)
+
+        return model.predict(valid_X)
+
+
+    def _evaluate_model(self, max_depth=3, min_sample=2):
+        if self.data_flag == "valid":
+            _, actuals = self.data_prep(valid=True)
+        elif self.data_flag == "test":
+            _, actuals = self.data_prep(test=True)
+
+        return r2_Loss(actuals, self._call_model(max_depth=max_depth, min_sample=min_sample))
+
+
+
+class SGDRegressorScratch:
+    def __init__(self, X_train=None, y_train=None, max_iter=1000, lr=0.01, tol=1e-5, random_state=None):
+        from sklearn.linear_model import SGDRegressor as SklearnSGDRegressor
+        
+        self.max_iter = max_iter
+        self.lr = lr
+        self.tol = tol
+        self.random_state = random_state
+        self.fitted = False
+        self.model = SklearnSGDRegressor(
+            max_iter=max_iter,
+            eta0=lr,
+            learning_rate='constant',  # analogous to original; can be changed to 'invscaling', etc.
+            tol=tol,
+            random_state=random_state,
+            penalty=None # No regularization for closest match to scratch
+        )
+
+        self.X_train, self.y_train = X_train. y_train
+
+    def fit(self, X, y):
+        self.model.fit(X, y)
+        self.fitted = True
+        return self
+
+    def predict(self, X):
+        if not self.fitted:
+            raise RuntimeError("SGDRegressor must be fitted before predicting.")
+        return self.model.predict(X)
+
+    def _r2_loss(self, y_true, y_pred):
+        y_true = np.array(y_true)
+        y_pred = np.array(y_pred)
+        # Residual sum of squares (SSE)
+        ss_res = np.sum((y_true - y_pred) ** 2)
+        # Total sum of squares (SST)
+        ss_tot = np.sum((y_true - np.mean(y_true)) ** 2)
+        return 1 - (ss_res / ss_tot)
+
+
+    def train_and_evaluate(self, test_X, test_y):
+        # reg = SGDRegressorScratch(train_X, train_y, 10000)
+
+        self.fit(self.X_train, self.y_train)
+        preds = self.predict(test_X)
+        print("Predictions: ", preds)
+        print("R2 Score: ", r2_Loss(test_y, preds))
+
 
 
 if __name__ == "__main__":
-    explorer = DataExplorer()
-    d = explorer.fin_data
+    # explorer = DataExplorer()
+    # d = explorer.fin_data
+    # print(d['y_test'])
 
     ## Data Info
     # print(explorer._get_columns())
@@ -251,4 +346,25 @@ if __name__ == "__main__":
     # print(explorer.print_skewness())
     # print(explorer.plot_histograms())
 
-    train_and_evaluate(d['X_train'], d['y_train'], d['X_test'])
+    # Linear Regressor Model
+    # lr = SGDRegressorScratch(d['X_train'], d['y_train'], max_iter=50000).train_and_evaluate(d['X_test'], d['y_test'])
+
+    # Decision Tree Regressor
+    dtr = DTRegressor()
+    print("Predictions: ", dtr._call_model())
+
+    for depth in range(2, 21): 
+        for sample in range(2, 21):
+            print(f"Depth|Sample: {depth}|{sample} --> Model Score: {dtr._evaluate_model(max_depth=depth, min_sample=sample)}")
+        
+        
+
+    # import matplotlib.pyplot as plt
+    # t = np.linspace(10,90,20)
+    # print(t)
+    # print("\n", t[:-1])
+    # print("\n", t[1:])
+    # print(t[:-1] + t[1:])
+
+    # plt.plot(t)
+    # plt.show()
