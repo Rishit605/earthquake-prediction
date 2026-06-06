@@ -10,7 +10,8 @@ from typing import Dict, Optional
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DATA_PATH = PROJECT_ROOT / "data" / f"eq_data_updated2.csv"
+DATA_PATH = PROJECT_ROOT / "data" / f"eq_data_updated3_patched.csv"
+DATA_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 def generate_url(start_date: str, end_date: str, min_magnitude: float = 2.5) -> str:
     """Generate USGS earthquake data URL for given date range."""
@@ -101,7 +102,7 @@ def url_data_call(url: Optional[str] = None, save: bool = False) -> pd.DataFrame
         print(f"Error fetching data from API: {e}")
         return pd.DataFrame()  # Return empty DataFrame on error
 
-def callDataFetcher(saved: bool) -> pd.DataFrame:
+def callDataFetcher(saved: bool):
     # Generate URLs for the last 5 years up to current date
     data_urls = generate_url_periods(start_year=2022, end_year=2026)
 
@@ -122,6 +123,7 @@ def callDataFetcher(saved: bool) -> pd.DataFrame:
             gdf =  pd.concat(earthquake_data, ignore_index=True)
             gdf.to_csv(DATA_PATH, index=False)
             return gdf
+
 
 
 if __name__ == "__main__":
