@@ -14,7 +14,29 @@ from src.preprocessing.data_preprocessing import Data_Sets, EQDataLoader, DataPr
 from src.helpers.utils import DataDist, plot_histograms
 from src.model.lr_scratch import LinearR
 from src.model.decision_tree_scratch import DecisionTreeR
-from src.helpers.utils import r2_Loss
+
+REGRESSION_DATA_PATH = PROJECT_ROOT / "data" / "engineered_data" / "FinalRegressionData.csv"
+
+
+def r2_score(y_true, y_pred):
+    y_true = np.asarray(y_true, dtype=float).reshape(-1)
+    y_pred = np.asarray(y_pred, dtype=float).reshape(-1)
+
+    if y_true.shape != y_pred.shape:
+        raise ValueError(
+            f"y_true and y_pred must have the same shape, got "
+            f"{y_true.shape} and {y_pred.shape}."
+        )
+    if y_true.size == 0:
+        raise ValueError("R2 score is undefined for empty inputs.")
+    if not np.isfinite(y_true).all() or not np.isfinite(y_pred).all():
+        raise ValueError("R2 score inputs must not contain NaN or infinite values.")
+
+    ss_res = np.sum(np.square(y_true - y_pred))
+    ss_tot = np.sum(np.square(y_true - y_true.mean()))
+    if ss_tot == 0:
+        return 1.0 if ss_res == 0 else 0.0
+    return 1.0 - (ss_res / ss_tot)
 
 
 # Data Loading
@@ -24,15 +46,18 @@ class DataFile:
         raw: bool = False,
         base: bool = False,
         regression: bool = True,
+        save_data_flag: bool = True,
         data = None
         ) -> None:
 
-        self._dataloader = EQDataLoader()
+        self._dataloader = EQDataLoader(Saved=save_data_flag)
+        self._save_data_flag = EQDataLoader(Saved=save_data_flag).save_data_flag
         self._raw = raw
         self._base = base
         self.z_scorer = None
         self._data = data
-        self.COLS = ['dmin', 'elevation', 'gap', 'latitude', 'longitude', 'rms']
+        self.COLS = ['dmin', 'dmin_km', 'elevation', 'gap', 'latitude', 'longitude', 'rms']
+        self.INDEX_COLS = ['idx', 'old_idx', 'Unnamed: 0']
 
 
     def _load_final_data(
@@ -43,7 +68,7 @@ class DataFile:
         valid=False,
         test=False,
         transform=False
-        ) -> pd.DataFrame:
+        ):
 
         df = self._dataloader.data_prep() if self._data is None else self._data
         X_set, y_set = Data_Sets.split_dataset_xy(df, validation_flag=valid, test_flag=test)
@@ -65,17 +90,18 @@ class DataFile:
         valid=False,
         test=False,
         transform=False
-        ) -> pd.DataFrame:
+        ):
 
         df = self._dataloader.data_prep() if self._data is None else self._data
-        df = self._encoding(df)      
+        df = self._encoding(df)
+        df = df.drop(columns=self.INDEX_COLS, errors="ignore")
         
         X_set, y_set = Data_Sets.split_dataset_xy(df, validation_flag=valid, test_flag=test)
 
         # df = DataPreprocessor(X_set).data_transform(log_t=log_, square=sq)
         df_experimental = ExperimentalDataPreprocessor(X_set).data_transform(square=sq)
 
-        df = self._z_score_fit(df_experimental, self.COLS, transform=transform)
+        df = self._z_score_fit(df_experimental, self.COLS, transform=valid or test)
         
         df = df.reset_index(drop=True)
 
@@ -88,15 +114,13 @@ class DataFile:
         cols,
         transform=False
         ):
-        
-        self.z_scorer = ZScoreStandard(data, cols)
-
-        fitted = self.z_scorer.fit_standard_Z()
-
         if transform:
-            return self.z_scorer.transform_standard_Z(data)
-        else:
-            return fitted
+            if self.z_scorer is None:
+                raise RuntimeError("Fit the training scaler before transforming validation/test data.")
+            return self.z_scorer.transform_standard_Z(data.copy())
+
+        self.z_scorer = ZScoreStandard(data.copy(), cols)
+        return self.z_scorer.fit_standard_Z()
 
     def _load_raw_data(self) -> pd.DataFrame:
         # Loads the raw data with minimal refinement.
@@ -108,14 +132,13 @@ class DataFile:
 
     def _encoding(self, data: pd.DataFrame) -> pd.DataFrame:
         # Encodes magType using DataEncoder's patcher.
-        # final_df = pd.DataFrame()
         dE = DataEncoder(data)
         final_df = dE.patcher()
         if 'magType' in data.columns:
             final_df.drop('magType', axis=1, inplace=True)
-            return final_df
+        return final_df
 
-    def __call__(self) -> pd.DataFrame:
+    def __call__(self):
         if self._raw and self._data:
             return self._load_raw_data()
         elif self._base:
@@ -126,12 +149,18 @@ class DataFile:
 
 
 class DataExplorer:
-    def __init__(self):
-        from src.preprocessing.data_imputation_model import run_test_funcs
-        self.base_data = run_test_funcs()
-        self.fin_data = self._get_data()
-        # self.test_x, self.test_y = self.dLL._load_final_data(test=True, transform=True)
+    def __init__(self, exp=True):
+        self.type_data = exp
+        
+        if self.type_data:
+            self.base_data = pd.read_csv(REGRESSION_DATA_PATH)
+        else:    
+            from src.preprocessing.data_imputation_model import run_test_funcs
+            self.base_data = run_test_funcs()
+            # self.test_x, self.test_y = self.dLL._load_final_data(test=True, transform=True)
 
+        self.fin_data = self._get_data()
+        
     def _get_data(self):
         dLL = DataFile(data=self.base_data)
         train_X, train_y = dLL._load_final_data_mod()
@@ -166,7 +195,6 @@ class DataExplorer:
             print(self.fin_data["y_test"].name if hasattr(self.fin_data["y_test"], "name") else "y_test")
      
 
-
     def print_data_shapes(self, train=True, valid=False, test=False):
         if train is not None:
             print("Train X data shape:")
@@ -186,14 +214,12 @@ class DataExplorer:
      
 
 
-
     def print_skewness(self, train=True, valid=False, test=False):
         if train is not None:
             print("Skewness of Training Data:")
             # Only show skew for numeric columns
             numeric_cols = self.fin_data["X_train"].select_dtypes(include='number')
             print(numeric_cols.skew())
-            print
         elif valid:
             print("Skewness of Validation Data:")
             numeric_cols = self.fin_data["X_valid"].select_dtypes(include='number')
@@ -238,15 +264,16 @@ class LinearRegressor:
         return self.model.predict(X)
 
     def _r2_loss(self, y_true, y_pred):
-        y_true = np.array(y_true)
-        y_pred = np.array(y_pred)
-
-        # Residual sum of squares (SSE)
-        ss_res = np.sum((y_true - y_pred) ** 2)
-        # Total sum of squares (SST)
-        ss_tot = np.sum((y_true - np.mean(y_true)) ** 2)
-
-        return 1 - (ss_res / ss_tot)
+        return r2_score(y_true, y_pred)
+    
+    
+    def train_and_evaluate(self, train_X, train_y, test_X, test_y):
+        # reg = SGDRegressorScratch(train_X, train_y, 10000)
+ 
+        self.fit(train_X, train_y)
+        preds = self.predict(test_X)
+        print("Predictions: ", preds)
+        print("R2 Score: ", self._r2_loss(test_y, preds))
    
 
 class DTRegressor:
@@ -265,24 +292,31 @@ class DTRegressor:
         else:
             return self.data['X_train'].to_numpy(), self.data['y_train'].to_numpy()  
 
-    def _call_model(self, max_depth=3, min_sample=2):
+    def _call_model(self, max_depth=3, min_sample=2, valid=True, test=False):
         train_X, train_y = self.data_prep()
-        valid_X, valid_y = self.data_prep(valid=True)
+        pred_X, _ = self.data_prep(valid=valid, test=test)
 
         model = DecisionTreeR(max_depth=max_depth, min_sample=min_sample)
         model.fit(train_X, train_y)
 
-        return model.predict(valid_X)
+        return model.predict(pred_X)
 
 
-    def _evaluate_model(self, max_depth=3, min_sample=2):
-        if self.data_flag == "valid":
-            _, actuals = self.data_prep(valid=True)
-        elif self.data_flag == "test":
+    def _evaluate_model(self, max_depth=3, min_sample=2, valid=True, test=False):
+        if test:
             _, actuals = self.data_prep(test=True)
+        elif valid:
+            _, actuals = self.data_prep(valid=True)
+        else:
+            _, actuals = self.data_prep()
 
-        return r2_Loss(actuals, self._call_model(max_depth=max_depth, min_sample=min_sample))
-
+        preds = self._call_model(
+            max_depth=max_depth,
+            min_sample=min_sample,
+            valid=valid,
+            test=test,
+        )
+        return r2_score(actuals, preds)
 
 
 class SGDRegressorScratch:
@@ -303,7 +337,7 @@ class SGDRegressorScratch:
             penalty=None # No regularization for closest match to scratch
         )
 
-        self.X_train, self.y_train = X_train. y_train
+        self.X_train, self.y_train = X_train, y_train
 
     def fit(self, X, y):
         self.model.fit(X, y)
@@ -316,29 +350,84 @@ class SGDRegressorScratch:
         return self.model.predict(X)
 
     def _r2_loss(self, y_true, y_pred):
-        y_true = np.array(y_true)
-        y_pred = np.array(y_pred)
-        # Residual sum of squares (SSE)
-        ss_res = np.sum((y_true - y_pred) ** 2)
-        # Total sum of squares (SST)
-        ss_tot = np.sum((y_true - np.mean(y_true)) ** 2)
-        return 1 - (ss_res / ss_tot)
+        return r2_score(y_true, y_pred)
 
 
     def train_and_evaluate(self, test_X, test_y):
         # reg = SGDRegressorScratch(train_X, train_y, 10000)
-
+ 
         self.fit(self.X_train, self.y_train)
         preds = self.predict(test_X)
         print("Predictions: ", preds)
-        print("R2 Score: ", r2_Loss(test_y, preds))
+        print("R2 Score: ", self._r2_loss(test_y, preds))
 
 
+def summarize_missing_data(data):
+    """Return a summary of invalid/missing values for a dataset (DataFrame/Series/ndarray).
+
+    Summary columns: total_rows, null_count, pos_inf_count, neg_inf_count, non_finite_count, percent_null
+    """
+    # Normalize to DataFrame
+    if isinstance(data, pd.Series):
+        df = data.to_frame()
+    elif isinstance(data, pd.DataFrame):
+        df = data.copy()
+    else:
+        try:
+            arr = np.asarray(data)
+        except Exception:
+            raise TypeError("Unsupported data type for summarize_missing_data")
+        if arr.ndim == 0:
+            raise TypeError(
+                "summarize_missing_data expected a DataFrame, Series, or 1-D/2-D array; "
+                f"got scalar value {data!r}."
+            )
+        if arr.ndim == 1:
+            df = pd.DataFrame(arr, columns=["value"])
+        elif arr.ndim == 2:
+            df = pd.DataFrame(arr)
+        else:
+            raise TypeError(
+                "summarize_missing_data expected a DataFrame, Series, or 1-D/2-D array; "
+                f"got array with shape {arr.shape}."
+            )
+
+    total = len(df)
+    summary = []
+    for col in df.columns:
+        series = df[col]
+        null_count = int(series.isnull().sum())
+        # For numeric-like values, check infinities and finiteness
+        try:
+            arr = series.values.astype(float)
+            pos_inf = int(np.isposinf(arr).sum())
+            neg_inf = int(np.isneginf(arr).sum())
+            non_finite = int((~np.isfinite(arr)).sum())
+        except Exception:
+            pos_inf = neg_inf = non_finite = 0
+
+        summary.append({
+            "column": col,
+            "total_rows": total,
+            "null_count": null_count,
+            "pos_inf_count": pos_inf,
+            "neg_inf_count": neg_inf,
+            "non_finite_count": non_finite,
+            "percent_null": float(null_count) / total * 100 if total else 0.0,
+        })
+
+    return pd.DataFrame(summary).set_index("column")
 
 if __name__ == "__main__":
-    # explorer = DataExplorer()
-    # d = explorer.fin_data
-    # print(d['y_test'])
+    explorer = DataExplorer(exp=False)
+    d = explorer.fin_data
+    # d1 = DataExplorer().base_data
+    # d2 = DataExplorer(exp=False).base_data
+    
+    
+    print(summarize_missing_data(d["X_train"]))
+    # print(summarize_missing_data(d2))
+    
 
     ## Data Info
     # print(explorer._get_columns())
@@ -346,25 +435,26 @@ if __name__ == "__main__":
     # print(explorer.print_skewness())
     # print(explorer.plot_histograms())
 
-    # Linear Regressor Model
+    # Linear Regressor Model : TODO: Models are performing worse than expected, issue unknown. Need to investigate further.
     # lr = SGDRegressorScratch(d['X_train'], d['y_train'], max_iter=50000).train_and_evaluate(d['X_test'], d['y_test'])
+    # lr2 = LinearRegressor(d['X_train'], d['y_train'], max_iter=50000).train_and_evaluate(d['X_train'], d['y_train'], d['X_test'], d['y_test'])
 
     # Decision Tree Regressor
-    dtr = DTRegressor()
-    print("Predictions: ", dtr._call_model())
-
-    for depth in range(2, 21): 
-        for sample in range(2, 21):
-            print(f"Depth|Sample: {depth}|{sample} --> Model Score: {dtr._evaluate_model(max_depth=depth, min_sample=sample)}")
+    # dtr = DTRegressor()
+    # print("Predictions: ", dtr._call_model())
+    # print(dtr._evaluate_model(max_depth=11, min_sample=20)) # Best: depth=11, min_samples_split=20, R²=0.870592
+    
+    # d = EQDataLoader()
+    # def info_print(data):
+    #     print(data.head())
+    #     print(data.shape)
+    #     # print(data.sort_values(by='idx').index)
+    #     print(data.isna().sum())
+    #     print(data.tail())
         
-        
-
-    # import matplotlib.pyplot as plt
-    # t = np.linspace(10,90,20)
-    # print(t)
-    # print("\n", t[:-1])
-    # print("\n", t[1:])
-    # print(t[:-1] + t[1:])
-
-    # plt.plot(t)
-    # plt.show()
+    # data = d.extra_data_prep()
+    # info_print(data)
+    # print("\n")
+    # data = d.refine_og_data()
+    # info_print(data)
+    # print()
