@@ -2,12 +2,12 @@ from typing import List
 import numpy as np
 import pandas as pd
 import math
+import warnings
 
 
 import geojson
 import geopandas as gpd
 
-from pandas.core.generic import validate_inclusive
 from sklearn.preprocessing import LabelEncoder, MinMaxScaler
 
 from pathlib import Path
@@ -22,13 +22,24 @@ from src.helpers.utils import find_mean, find_variance
 ### DATA TRANSFORMATION
 # Data Preparation
 class EQDataLoader:
-    def __init__(self) -> None:
-        self.DATA_PATH = PROJECT_ROOT / "data" / "engineered_data" / "New_Engineered_Data.csv"
-        self.data_f = callDataFetcher(True)
-        self.refill_data = pd.read_csv(self.DATA_PATH)
-
-    def return_path(self):
-        return self.DATA_PATH
+    def __init__(self, Saved: bool = True, fill_save: bool = False) -> None:
+        from notebook.data_eng_test import data_eng_test, data_eng_test_incremental
+        self.save_data_flag = Saved
+        self.fill_save = fill_save
+        self.DATA_PATH =  None
+        self.data_f = callDataFetcher(Saved)
+        
+        if fill_save:
+            self.refill_data = pd.read_csv(PROJECT_ROOT / "data" / "engineered_data" / "New_Engineered_Data.csv")
+            self.DATA_PATH = PROJECT_ROOT / "data" / "engineered_data" / "New_Engineered_Data.csv"
+        else:
+            self.refill_data = data_eng_test(data=self.data_f, file_name="New_Engineered_Data2.csv")
+            self.refill_data2 = data_eng_test_incremental(data=self.data_f, file_name="New_Engineered_Data3.csv")
+            warnings.warn(
+                "'DATA_PATH' is currently set to None because fill_save=False.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
     
     def coordinate_expander(self, data: pd.DataFrame):
         # Check if 'geo' column exists
@@ -82,26 +93,48 @@ class EQDataLoader:
         print(f"Extracted coordinates for {n_filled} out of {n_total} rows. Remaining rows contain NaN in new columns.")
 
     
-    def refine_og_data(self):
+    def refine_og_data(self, data=None):
+        
+        if data is None:
+            if self.data_f is None or self.data_f.empty:
+                raise ValueError("Original data is missing or empty. Cannot refine original data.")
+            original_df = self.data_f
+        else:
+            original_df = data
 
-        original_df = self.data_f
+        if self.save_data_flag and self.DATA_PATH is not None and not self.DATA_PATH.exists():
+            raise FileNotFoundError(f"Expected data file not found at {self.DATA_PATH}. Please ensure the data is saved correctly.")
+
 
         df_copy = original_df.copy()
 
         # Add columns for coordinates
         self.coordinate_expander(df_copy)
 
-
         # Filter valid data points
         valid_df = df_copy[df_copy['status'] == 'reviewed']
 
+        sort_col = 'idx' if 'idx' in valid_df.columns else ('index' if 'index' in valid_df.columns else None)
+        if sort_col:
+            valid_df.sort_values(by=sort_col, inplace=True)
+        
         filtered_df = valid_df.drop(columns=drop_rate_new(valid_df)) 
         # print(filtered_df.columns)
         
         # Setting the index for merge
-        new_df = filtered_df.reset_index()
-        new_df.rename(columns={"index": "idx"}, inplace=True)
-        new_df.set_index("idx", inplace=True)
+        # new_df = filtered_df.reset_index()
+        new_df = filtered_df.copy()
+        if 'index' in new_df.columns:
+            new_df.rename(columns={"index": "idx"}, inplace=True)
+
+        sort_col = 'idx' if 'idx' in new_df.columns else ('index' if 'index' in new_df.columns else None)
+        if sort_col:
+            new_df.sort_values(by=sort_col, inplace=True)
+
+        if 'idx' in new_df.columns:
+            new_df.set_index("idx", inplace=True)
+        else:
+            raise KeyError("Cannot set index. Neither 'idx' nor 'index' was found in the dataframe.")
 
         return new_df
     
@@ -138,44 +171,26 @@ class EQDataLoader:
             return final_data
 
     def extra_data_prep(self, ts: bool=False, data = None) -> pd.DataFrame:
-        data_flag = False
-        if isinstance(data, pd.DataFrame):
-            data_flag = True
-
-        ref_df = self.refine_refill_data()
-        print(data_flag)
-        if data_flag:
-            print("No new data called")
-            og_data = data
-
-            # Setting the index for merge
-            final_df = og_data.reset_index()
-            final_df.rename(columns={"index": "idx"}, inplace=True)
-            final_df.set_index("idx", inplace=True)
-            
-            final_data = final_df.combine_first(ref_df).loc[final_df.index]
-            final_data.drop('nst', axis=1, inplace=True)
-            final_data.drop('detail', axis=1, inplace=True)
-            final_data.dropna(inplace=True)
-
-        else:
-            print("New Data is called")
-            og_data = self.refine_og_data()
-
-            final_data = og_data.combine_first(ref_df).loc[og_data.index]
-            final_data.drop('nst', axis=1, inplace=True)
-            final_data.drop('detail', axis=1, inplace=True)
-            final_data.dropna(inplace=True)
+        if self.fill_save:
+            return self.data_prep(ts=ts)
         
+        if isinstance(data, pd.DataFrame):
+            final_data = data.copy()
+        else:
+            final_data = self.refine_og_data()
+            
+        final_data.drop(columns=['nst', 'detail'], errors='ignore', inplace=True)
+        final_data.sort_values('time', inplace=True)
+
         if ts:
             final_data['time'] = pd.to_datetime(final_data['time'], unit='ms')
-            final_data.sort_values('time')
-
             return final_data
         else:
             final_data.sort_values('time')
             final_data.drop('time', axis=1, inplace=True)
-            return final_data
+            final_data.dropna(inplace=True)
+            df = final_data.reset_index(drop=True)
+            return df
 
 
 class ZScoreStandard:
@@ -286,12 +301,16 @@ class ExperimentalDataPreprocessor:
             raise KeyError("Neither 'dmin' nor 'dmin_km' column found in the dataframe.")
         
 
-        cols = self.dataframe.select_dtypes(include='number').columns
-        
+        numeric_cols = list(self.dataframe.select_dtypes(include='number').columns)
+
+        if self.c_cols and self.cols is not None:
+            cols = [col for col in self.cols if col in numeric_cols]
+        else:
+            cols = numeric_cols
+
         # Now handle transformations based on skewness
         # Compute skewness of numeric columns
         skewness = self.dataframe[cols].skew()
-        # For each col, conditionally apply transformation
         for col in cols:
             if col not in self.dataframe.columns:
                 continue
@@ -360,22 +379,6 @@ class BackupFunctions:
             return eq_data.set_index('time')
         return eq_data
 
-
-
-    def drop_rate(data) -> List:
-        cols = []
-        for q, i in data.isnull().sum().items():
-            if i > data.shape[0] * 0.3:
-                if q not in cols:
-                    cols.append(q)
-
-
-        cols.extend(list(data.select_dtypes(include='object').columns))
-        additional_drops = ['tsunami', 'updated', 'time', 'sig']
-        cols.extend(additional_drops)
-        cols.remove('magType')
-        cols.remove('detail')
-        return 
         
 
 

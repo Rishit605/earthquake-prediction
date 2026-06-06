@@ -440,7 +440,8 @@ class ModelImputationOLD:
 
         # Compute standard deviations using ImputationStats
         stds = ImputationStats.calc_std(
-            train_df[["latitude", "longitude", "dmin", "gap", "rms"]]
+            train_df[DEFAULT_IMPUTE_COLS],
+            DEFAULT_IMPUTE_COLS,
         )
 
         print("KNN for Imputation: Initialized\nImputing... Please wait")
@@ -480,7 +481,7 @@ class ModelImputationOLD:
         
         if save:
             # Save final_df to a CSV file in the data\engineered_data folder
-            output_path = os.path.join('eq_prediction\data\engineered_data', "FinalData.csv")
+            output_path = os.path.join(r'eq_prediction\data\engineered_data', "FinalData.csv")
             final_df.to_csv(output_path, index=False)
             print(f"final_df saved to {output_path}")
  
@@ -499,7 +500,7 @@ class ModelImputation:
     @staticmethod
     def _stratify_train_pred(
         df: pd.DataFrame, shuffle: bool = True
-    ) -> tuple[pd.DataFrame, pd.DataFrame]:
+    ):
         if "gap" in df.columns:
             train_df, pred_df = Data_Sets.stratify_split(df, shuffle=shuffle)
             train_df = train_df.drop(columns=["gap_missing"], errors="ignore")
@@ -578,6 +579,7 @@ class ModelImputation:
             alpha=ridge_alpha
         ).impute(final_filled)
         final_df = pd.concat([patched_train, patched_test], axis=0).sort_index()
+        # print(final_df.head())
 
         if save:
             out_dir = Path("data/engineered_data")
@@ -597,8 +599,8 @@ class ModelImputation:
         }
 
 
-def run_test_funcs(X=None):
-    data = EQDataLoader().data_prep() if X is None else X
+def run_test_funcs(X=None, save_Data=True):
+    data = EQDataLoader(Saved=save_Data).extra_data_prep() if X is None else X
 
     cols_default = resolve_numeric_impute_columns(data, cols=None)
     print("Default KNN (seismic) columns:", cols_default)
