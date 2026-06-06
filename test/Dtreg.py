@@ -16,9 +16,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from main_new import DTRegressor
+from main_new import DTRegressor, r2_score
 from src.model.decision_tree_scratch import DecisionTreeR
-from src.helpers.utils import r2_Loss
 
 # Module-level data for worker processes (Windows multiprocessing)
 X_train = None
@@ -26,11 +25,20 @@ y_train = None
 X_valid = None
 y_valid = None
 
+
+def init_worker(train_x, train_y, valid_x, valid_y):
+    global X_train, y_train, X_valid, y_valid
+    X_train = train_x
+    y_train = train_y
+    X_valid = valid_x
+    y_valid = valid_y
+
+
 def evaluate_tree(params):
     depth, sample = params
-    dtr = DTRegressor()
-    dtr.fit(X_train, y_train)
-    score = dtr._evaluate_model(max_depth=depth, min_samples_split=sample)
+    model = DecisionTreeR(max_depth=depth, min_sample=sample)
+    model.fit(X_train, y_train)
+    score = r2_score(y_valid, model.predict(X_valid))
     return depth, sample, score
 
 
@@ -49,7 +57,10 @@ if __name__ == "__main__":
     param_grid = list(itertools.product(range(2, 21), range(2, 21)))
     print(f"Evaluating {len(param_grid)} depth × min_sample combinations...")
 
-    with concurrent.futures.ProcessPoolExecutor() as executor:
+    with concurrent.futures.ProcessPoolExecutor(
+        initializer=init_worker,
+        initargs=(X_train, y_train, X_valid, y_valid),
+    ) as executor:
         results = executor.map(evaluate_tree, param_grid)
 
         best_score = float("-inf")
