@@ -10,7 +10,7 @@ from typing import Dict, Optional
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DATA_PATH = PROJECT_ROOT / "data" / f"eq_data_updated2.csv"
+DATA_PATH = PROJECT_ROOT / "data" / f"eq_data_updated3.csv"
 
 def generate_url(start_date: str, end_date: str, min_magnitude: float = 2.5) -> str:
     """Generate USGS earthquake data URL for given date range."""
