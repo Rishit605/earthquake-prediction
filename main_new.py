@@ -14,7 +14,7 @@ from src.preprocessing.data_preprocessing import Data_Sets, EQDataLoader, DataPr
 from src.helpers.utils import DataDist, plot_histograms
 from src.model.lr_scratch import LinearR
 from src.model.decision_tree_scratch import DecisionTreeR
-from src.helpers.utils import r2_Loss
+from src.helpers.utils import r2_Loss, check_dataset_integrity
 
 
 # Data Loading
@@ -303,7 +303,7 @@ class SGDRegressorScratch:
             penalty=None # No regularization for closest match to scratch
         )
 
-        self.X_train, self.y_train = X_train. y_train
+        self.X_train, self.y_train = X_train, y_train
 
     def fit(self, X, y):
         self.model.fit(X, y)
@@ -340,6 +340,23 @@ if __name__ == "__main__":
     # d = explorer.fin_data
     # print(d['y_test'])
 
+    # d = DataExplorer().base_data
+    # print(d.info())
+    # print("to_numpy: ", np.isnan(d.to_numpy()).any())
+    # print("\nValues: ", np.isnan(d.values).any())
+    # print(d)
+    # check_dataset_integrity(d)
+
+    t = EQDataLoader().data_prep()
+
+    # if 'time' in t.columns:
+    #     t['time'] = pd.to_datetime(t['time'], unit='ms')
+
+    print(t.head(2))
+    print(t.tail(2))
+    print(t.shape)
+
+
     ## Data Info
     # print(explorer._get_columns())
     # print(explorer.print_data_shapes())
@@ -350,12 +367,12 @@ if __name__ == "__main__":
     # lr = SGDRegressorScratch(d['X_train'], d['y_train'], max_iter=50000).train_and_evaluate(d['X_test'], d['y_test'])
 
     # Decision Tree Regressor
-    dtr = DTRegressor()
-    print("Predictions: ", dtr._call_model())
+    # dtr = DTRegressor()
+    # print("Predictions: ", dtr._call_model())
 
-    for depth in range(2, 21): 
-        for sample in range(2, 21):
-            print(f"Depth|Sample: {depth}|{sample} --> Model Score: {dtr._evaluate_model(max_depth=depth, min_sample=sample)}")
+    # for depth in range(2, 21): 
+    #     for sample in range(2, 21):
+    #         print(f"Depth|Sample: {depth}|{sample} --> Model Score: {dtr._evaluate_model(max_depth=depth, min_sample=sample)}")
         
         
 
@@ -368,3 +385,17 @@ if __name__ == "__main__":
 
     # plt.plot(t)
     # plt.show()
+
+    # from src.preprocessing.data_imputation_model import run_test_funcs
+    # print(run_test_funcs())
+    # d = EQDataLoader()
+    # print(d.refine_og_data())
+    # print(d.refine_refill_data())
+
+
+    # from src.helpers.datapi import DATA_PATH
+
+    # df = pd.read_csv(r'C:\Projs\COde\Earthquake\eq_prediction\data\engineered_data\FinalRegressionData.csv')
+    # print(df.shape)
+    # print(df.head(5))
+    # print(df.isna().sum())
