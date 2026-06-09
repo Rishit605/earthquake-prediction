@@ -143,3 +143,38 @@ def r2_Loss(y_true, y_pred):
     # Total sum of squares (SST)
     ss_tot = np.sum((y_true - np.mean(y_true)) ** 2)
     return 1 - (ss_res / ss_tot)
+
+
+def check_dataset_integrity(dataset):
+    """
+    Prints shape of the dataset and checks for NaN, inf, -inf values.
+    Works for numpy arrays and pandas DataFrames.
+    """
+    if hasattr(dataset, "shape"):
+        print("Shape:", dataset.shape)
+    else:
+        print("No shape attribute.")
+
+    # Handle both DataFrames/Series and numpy arrays correctly
+    import numpy as np
+    import pandas as pd
+
+    dataset = dataset.select_dtypes(include='number')
+
+    if isinstance(dataset, (pd.DataFrame, pd.Series)):
+        has_nan = dataset.isna().values.any()
+        has_inf = np.isinf(dataset.values).any()
+        has_neginf = np.isneginf(dataset.values).any()
+    elif isinstance(dataset, np.ndarray):
+        has_nan = np.isnan(dataset).any()
+        has_inf = np.isinf(dataset).any()
+        has_neginf = np.isneginf(dataset).any()
+    else:
+        # fallback: try converting to numpy array
+        arr = np.asarray(dataset)
+        has_nan = np.isnan(arr).any()
+        has_inf = np.isinf(arr).any()
+        has_neginf = np.isneginf(arr).any()
+    print("Contains NaN?:", has_nan)
+    print("Contains inf?:", has_inf)
+    print("Contains -inf?:", has_neginf)
