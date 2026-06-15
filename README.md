@@ -24,7 +24,7 @@ You can access the live predictions through this web app [here - To be Added]()
 `$ source <<any environment name>>/bin/activate`
 `$ pip install --upgrade pip `
 
-* Then install the dependencies via the requirements.txt
+* Then install the dependencies via `requirements.txt`:
 `$ pip install -r requirements.txt` (If error occurs in installation, upgrade pip and debug accordingly)
 
 ## Usage
