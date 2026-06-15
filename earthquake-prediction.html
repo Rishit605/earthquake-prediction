@@ -1,9 +1,11 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Earthquake Prediction Dashboard</title>    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <title>Earthquake Prediction Dashboard</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
     <style>
         :root {
@@ -13,7 +15,8 @@
             --background-color: #ecf0f1;
             --text-color: #34495e;
         }
-          body {
+
+        body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             line-height: 1.6;
             margin: 0;
@@ -23,7 +26,7 @@
             height: 100vh;
             overflow-x: hidden;
         }
-        
+
         .dashboard {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -75,23 +78,23 @@
             max-height: 400px;
             overflow-y: auto;
         }
-        
+
         header {
             text-align: center;
             margin-bottom: 2rem;
         }
-        
+
         h1 {
             color: var(--secondary-color);
             font-size: 2.5rem;
             margin-bottom: 0.5rem;
         }
-        
+
         .subtitle {
             color: var(--primary-color);
             font-size: 1.2rem;
         }
-        
+
         #fetchButton {
             background-color: var(--primary-color);
             border: none;
@@ -106,58 +109,60 @@
             border-radius: 4px;
             transition: background-color 0.3s ease;
         }
-        
+
         #fetchButton:hover {
             background-color: #2980b9;
         }
-        
+
         #fetchButton:disabled {
             background-color: #bdc3c7;
             cursor: not-allowed;
         }
-        
+
         #errorMessage {
             color: var(--accent-color);
             margin-top: 1rem;
             font-weight: bold;
             text-align: center;
         }
-        
+
         .table-container {
             overflow-x: auto;
             margin-top: 2rem;
         }
-        
+
         table {
             width: 100%;
             border-collapse: separate;
             border-spacing: 0;
         }
-        
-        th, td {
+
+        th,
+        td {
             padding: 12px 15px;
             text-align: left;
             border-bottom: 1px solid #ddd;
         }
-        
+
         thead {
             background-color: var(--secondary-color);
             color: white;
         }
-        
+
         th {
             font-weight: bold;
         }
-        
+
         tbody tr:nth-child(even) {
             background-color: #f2f2f2;
         }
-        
+
         tbody tr:hover {
             background-color: #e0e0e0;
             transition: background-color 0.3s ease;
         }
-          .action-button {
+
+        .action-button {
             background-color: var(--primary-color);
             border: none;
             color: white;
@@ -200,12 +205,17 @@
             font-style: italic;
             color: var(--secondary-color);
         }
-        
+
         @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
+            from {
+                opacity: 0;
+            }
+
+            to {
+                opacity: 1;
+            }
         }
-        
+
         .fade-in {
             animation: fadeIn 0.5s ease-in;
         }
@@ -217,14 +227,17 @@
         }
     </style>
 </head>
-<body>    <div class="dashboard">
+
+<body>
+    <div class="dashboard">
         <div class="left-panel">
             <div class="welcome-section">
                 <h1>Earthquake Prediction Dashboard</h1>
                 <p class="subtitle">Real-time seismic activity forecasts</p>
-                <p>Welcome to our advanced earthquake prediction system. This dashboard provides real-time forecasts 
-                of seismic activities using machine learning models trained on historical earthquake data. The map on 
-                the right shows recent earthquake locations and predictions.</p>
+                <p>Welcome to our advanced earthquake prediction system. This dashboard provides real-time forecasts
+                    of seismic activities using machine learning models trained on historical earthquake data. The map
+                    on
+                    the right shows recent earthquake locations and predictions.</p>
             </div>
 
             <div class="controls-section">
@@ -257,7 +270,8 @@
                     <p id="retrainStatus">Training progress: <span id="progressPercentage">0</span>%</p>
                 </div>
             </div>
-        </div>        <div class="right-panel">
+        </div>
+        <div class="right-panel">
             <div id="map"></div>
             <div class="legend">
                 <h4>Magnitude Scale</h4>
@@ -279,18 +293,20 @@
                 </div>
                 <div class="legend-item">
                     <div class="legend-color" style="background: #00ff00"></div>
-                    <span>< 4.0</span>
+                    <span>
+                        < 4.0</span>
                 </div>
             </div>
         </div>
-    </div>    <script>
+    </div>
+    <script>
         // Initialize map with dark theme
         const map = L.map('map', {
             minZoom: 2,
             maxZoom: 18,
             scrollWheelZoom: true
         }).setView([20, 0], 2);
-        
+
         L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
             attribution: '© OpenStreetMap contributors, © CARTO',
             maxZoom: 18
@@ -306,7 +322,9 @@
         const loadingMessage = document.getElementById('loadingMessage');
         const retrainProgress = document.getElementById('retrainProgress');
         const progressFill = document.querySelector('.progress-fill');
-        const progressPercentage = document.getElementById('progressPercentage');        async function fetchPredictions() {
+        const progressPercentage = document.getElementById('progressPercentage');
+
+        async function fetchPredictions() {
             try {
                 // Show loading state
                 fetchButton.disabled = true;
@@ -325,7 +343,7 @@
                 }
 
                 const data = await response.json();
-                
+
                 if (!data.predictions || !data.dates) {
                     throw new Error('Invalid response format from server');
                 }
@@ -338,7 +356,7 @@
                 fetchButton.disabled = false;
                 loadingMessage.style.display = 'none';
             }
-        }        function displayPredictions(predictions, dates) {
+        } function displayPredictions(predictions, dates) {
             const thead = predictionsTable.querySelector('thead tr');
             const tbody = predictionsTable.querySelector('tbody');
 
@@ -357,7 +375,7 @@
             for (let i = 0; i < allRows; i++) {
                 const row = tbody.insertRow();
                 row.className = 'fade-in';
-                
+
                 // Add timestamp
                 const dateCell = row.insertCell();
                 dateCell.textContent = dates[i];
@@ -373,7 +391,7 @@
                 const lat = predictions['Latitude'] ? predictions['Latitude'][i] : (35 + Math.random() * 10);
                 const lng = predictions['Longitude'] ? predictions['Longitude'][i] : (-120 + Math.random() * 10);
                 const magnitude = predictions['Magnitude'][i];
-                
+
                 const marker = L.circle([lat, lng], {
                     color: getColorForMagnitude(magnitude),
                     fillColor: getColorForMagnitude(magnitude),
@@ -391,7 +409,8 @@
 
                 // Add marker to tracking array and extend map bounds
                 currentMarkers.push(marker);
-                bounds.extend([lat, lng]);            }
+                bounds.extend([lat, lng]);
+            }
 
             // If there are markers, fit the map to show all of them
             if (currentMarkers.length > 0) {
@@ -417,7 +436,7 @@
             try {
                 retrainButton.disabled = true;
                 retrainProgress.style.display = 'block';
-                
+
                 const response = await fetch('http://localhost:8000/train', {
                     method: 'POST',
                     headers: {
@@ -435,7 +454,7 @@
                     progress += 5;
                     progressFill.style.width = `${progress}%`;
                     progressPercentage.textContent = progress;
-                    
+
                     if (progress >= 100) {
                         clearInterval(interval);
                         setTimeout(() => {
@@ -460,4 +479,5 @@
         fetchPredictions();
     </script>
 </body>
+
 </html>
