@@ -26,20 +26,75 @@ class EQDataLoader:
         from notebook.data_eng_test import data_eng_test, data_eng_test_incremental
         self.save_data_flag = Saved
         self.fill_save = fill_save
-        self.DATA_PATH =  None
-        self.data_f = callDataFetcher(Saved)
-        
+        self.DATA_PATH = None
+        self.data_f = self._load_raw_data(Saved)
+
         if fill_save:
-            self.refill_data = pd.read_csv(PROJECT_ROOT / "data" / "engineered_data" / "New_Engineered_Data.csv")
-            self.DATA_PATH = PROJECT_ROOT / "data" / "engineered_data" / "New_Engineered_Data.csv"
+            self.refill_data, self.DATA_PATH = self._load_engineered_data(
+                "new_engineered_data"
+            )
         else:
-            self.refill_data = data_eng_test(data=self.data_f, file_name="New_Engineered_Data2.csv")
-            self.refill_data2 = data_eng_test_incremental(data=self.data_f, file_name="New_Engineered_Data3.csv")
+            self.refill_data = self._load_engineered_data_or_run(data_eng_test, "new_engineered_data")
+            self.refill_data2 = self._load_engineered_data_or_run(data_eng_test_incremental, "new_engineered_data")
+            
+            if self.DATA_PATH is None:
+                warnings.warn(
+                    "'DATA_PATH' is currently set to None because fill_save=False.",
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
+
+    @staticmethod
+    def _load_raw_data(saved: bool):
+        try:
+            from src.helpers.sql_data_handler import fetch_raw_data, fetch_table
+            from src.helpers.datapi import data_geo_ready
+
+            # dataframe = fetch_raw_data()
+            dataframe = fetch_table(table_name='earthquakes_eq_data_updated3_patched', schema_name='pc_data')
+            print("Loaded raw earthquake data from the database.")
+            return data_geo_ready(dataframe)
+        except Exception as exc:
             warnings.warn(
-                "'DATA_PATH' is currently set to None because fill_save=False.",
+                f"Database raw-data load failed ({exc}). Falling back to local/API data.",
                 RuntimeWarning,
                 stacklevel=2,
             )
+            return callDataFetcher(saved)
+
+    @staticmethod
+    def _load_engineered_data(file_name: str):
+        csv_path = PROJECT_ROOT / "data" / "engineered_data" / file_name
+        try:
+            from src.helpers.sql_data_handler import fetch_engineered_data
+
+            dataframe = fetch_engineered_data(file_name)
+            print(f"Loaded engineered data '{file_name}' from the database.")
+            return dataframe, csv_path
+        except Exception as exc:
+            warnings.warn(
+                f"Database engineered-data load failed for '{file_name}' ({exc}). "
+                "Falling back to local CSV.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            if not csv_path.exists():
+                raise FileNotFoundError(
+                    f"Engineered data not found in the database or at {csv_path}."
+                ) from exc
+            return pd.read_csv(csv_path), csv_path
+
+    def _load_engineered_data_or_run(self, data_fn, file_name: str):
+        try:
+            from src.helpers.sql_data_handler import fetch_engineered_data
+
+            dataframe = fetch_engineered_data(file_name)
+            print(f"Loaded engineered data '{file_name}' from the database.")
+            return dataframe
+        except Exception as exc:
+            print(f"Database engineered-data load failed for '{file_name}' ({exc}). ")
+            print("Falling back to local data engineering.")
+            return data_fn(data=self.data_f, file_name=file_name)
     
     def coordinate_expander(self, data: pd.DataFrame):
         # Check if 'geo' column exists
