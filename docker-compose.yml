@@ -1,0 +1,25 @@
+services:
+  app:
+    build: .
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+    command: eq-pipeline run --source local
+
+  db:
+    image: postgres:16
+    profiles:
+      - db
+    environment:
+      POSTGRES_DB: eq_db
+      POSTGRES_USER: eq_user
+      POSTGRES_PASSWORD: eq_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:

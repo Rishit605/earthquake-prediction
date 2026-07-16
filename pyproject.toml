@@ -1,0 +1,52 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "earthquake-prediction"
+version = "0.1.0"
+description = "Earthquake data pipeline, training, and prediction project."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "comet-ml==3.45.0",
+  "fastapi==0.115.0",
+  "geojson==3.1.0",
+  "geopandas==1.0.1",
+  "joblib==1.4.2",
+  "matplotlib==3.9.1",
+  "numpy==1.26.4",
+  "pandas==2.2.2",
+  "pillow==10.4.0",
+  "psycopg[binary]==3.2.1",
+  "pydantic==2.9.2",
+  "python-dotenv==1.0.1",
+  "requests==2.32.3",
+  "scikit-learn==1.5.1",
+  "scipy==1.14.0",
+  "seaborn==0.13.2",
+  "shapely==2.0.5",
+  "SQLAlchemy==2.0.35",
+  "statsmodels==0.14.2",
+  "sympy==1.12",
+  "torch==2.4.0",
+  "urllib3==2.2.2",
+  "uvicorn==0.30.6",
+  "xgboost==2.1.1",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+  "ipykernel>=6.29",
+]
+
+[project.scripts]
+eq-pipeline = "eq_prediction.pipeline.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
