@@ -103,7 +103,7 @@ to build it interactively — see [Legacy / exploratory scripts](#legacy--explor
 
 ## Prerequisites
 
-- **Python 3.10 or later** (3.11 recommended — that's what the Docker image uses)
+- **Python 3.10 to 3.12** (3.11 recommended — that's what the Docker image uses)
 - **Git**
 - **PostgreSQL** — only if you want to use the database source; entirely optional
 - **~2–3 GB of free disk space** — the dependency list includes PyTorch,
