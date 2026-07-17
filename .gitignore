@@ -17,3 +17,5 @@
 *.png
 *.txt
 *.json
+.egg
+.egg-info
