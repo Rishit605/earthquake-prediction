@@ -27,7 +27,7 @@ from eq_prediction.preprocessing import *
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu") # Setting the device
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
-MODEL_DIR = PROJECT_ROOT / "src" / "model"
+MODEL_DIR = PROJECT_ROOT / "models" / "trained"
 
 #1 This function calls the data from the url and performs basic preprocessing.
 def raw_data_prep(TimeSeries: bool, save: bool = False, training: bool = True) -> pd.DataFrame:
@@ -150,7 +150,7 @@ def load_prep_dataset(save: bool = False, training: bool = True) -> pd.DataFrame
         df = feature_engineering(df)
         df = feature_selection(df)
         cached_df = df  # Cache the preprocessed dataframe
-        return cached_df
+    return cached_df
         
 # Defining the Target(s) and Variables
 def VarTar(data) -> tuple:
@@ -260,7 +260,8 @@ def DataLoader_Conversion(data, test_data: bool = True) -> tuple:
 
 # Training step for the Model
 def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler, num_epochs, early_stopping, checkpoint, experiment, logging=True ):
-    scaler = GradScaler()    
+    use_cuda_amp = device.type == "cuda"
+    scaler = GradScaler("cuda", enabled=use_cuda_amp)
     if logging:
         with experiment.train():
             train_losses = []
@@ -278,7 +279,7 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
 
                     optimizer.zero_grad()
                     
-                    with autocast('cuda'):
+                    with autocast(device_type=device.type, enabled=use_cuda_amp):
                         # Forward pass
                         outputs = model(inputs)
                         loss = criterion(outputs, targets)
@@ -353,7 +354,7 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
 
 
 # Test Step
-def test_step(model, model_pth, scaler_Y):
+def test_step(model, model_pth, scaler_Y, test_dataloader, criterion, experiment=None):
     """
     Loads the model and performs inference on the test set.
     
@@ -366,7 +367,7 @@ def test_step(model, model_pth, scaler_Y):
     loaded_model = model
     
     # Load the state dict
-    loaded_model.load_state_dict(torch.load(model_path))
+    loaded_model.load_state_dict(torch.load(model_path, map_location=device))
     loaded_model.eval()
     
     test_loss = 0
@@ -384,7 +385,8 @@ def test_step(model, model_pth, scaler_Y):
 
     test_loss /= len(test_dataloader)
     print(f"Test Loss: {test_loss:.4f}")
-    experiment.log_metric("test_loss", test_loss)
+    if experiment is not None:
+        experiment.log_metric("test_loss", test_loss)
 
     # Convert predictions and actuals to numpy arrays
     predictions = np.array(predictions)
@@ -398,7 +400,8 @@ def test_step(model, model_pth, scaler_Y):
     for i, col in enumerate(target_column):
         rmse = np.sqrt(np.mean((predictions_original[:, i] - actuals_original[:, i])**2))
         print(f"RMSE for {col}: {rmse:.4f}")
-        experiment.log_metric(f"RMSE_{col}", rmse)
+        if experiment is not None:
+            experiment.log_metric(f"RMSE_{col}", rmse)
 
     # Log predictions vs actuals plot
     for i, col in enumerate(target_column):
@@ -410,7 +413,8 @@ def test_step(model, model_pth, scaler_Y):
         ax.set_xlabel(f'Actual {col}')
         ax.set_ylabel(f'Predicted {col}')
         ax.set_title(f'Actual vs Predicted {col}')
-        experiment.log_figure(figure_name=f"Actual_vs_Predicted_{col}", figure=fig)
+        if experiment is not None:
+            experiment.log_figure(figure_name=f"Actual_vs_Predicted_{col}", figure=fig)
         plt.close(fig)
 
 
@@ -480,7 +484,7 @@ if __name__ == "__main__":
     criterion = nn.HuberLoss()
 
     # Callbacks
-    model_checkpoint = ModelCheckPoint(file_path=str(MODEL_DIR / "earthquake_best_model_torch.pth"), verbose=True)
+    model_checkpoint = ModelCheckPoint(file_path=str(MODEL_DIR / "earthquake_best_model.pth"), verbose=True)
     early_stopping = Early_Stopping(patience=20, verbose=True)
 
     # Training loop
@@ -493,7 +497,14 @@ if __name__ == "__main__":
 
     # Testing phase
     with experiment.test():
-        test_step(model, model_pth=str(MODEL_DIR / "earthquake_best_model3.pth"), scaler_Y=scaler_Y)
+        test_step(
+            model,
+            model_pth=str(MODEL_DIR / "earthquake_best_model.pth"),
+            scaler_Y=scaler_Y,
+            test_dataloader=test_dataloader,
+            criterion=criterion,
+            experiment=experiment,
+        )
 
     # Log final metrics and plots
     log_model(experiment, model, model_name="earthquake_model3")
