@@ -17,7 +17,7 @@ from eq_prediction.preprocessing.data_preprocessing import Data_Sets, EQDataLoad
 from eq_prediction.helpers.utils import DataDist, plot_histograms
 from eq_prediction.model.lr_scratch import LinearR
 from eq_prediction.model.decision_tree_scratch import DecisionTreeR
-from eq_prediction.pipeline import run_pipeline, load_dataset, load_prediction_input
+from eq_prediction_data_pipeline import run_pipeline, load_dataset, load_prediction_input
 
 
 
@@ -191,7 +191,6 @@ class DataFile:
             return self._load_final_data()
 
 
-
 class DataExplorer:
     def __init__(self, reg_impute=False):
         self.base_data = None
@@ -280,7 +279,6 @@ class DataExplorer:
             numeric_cols = self.fin_data["X_test"].select_dtypes(include='number')
             plot_histograms(numeric_cols, numeric_cols.columns)
 
-        
 
 class LinearRegressor:
     def __init__(self, X_train, y_train, max_iter=10000):
@@ -538,8 +536,6 @@ def summarize_missing_data(data):
 
 if __name__ == "__main__":
     result = run_pipeline(source="db", fetch_new=False, enrich_details=False)
-    # print(result)
-    # print(result[0])
     train_df = load_dataset("train")
     val_df = load_dataset("validation")
     # test_df = load_dataset("test")
@@ -552,15 +548,6 @@ if __name__ == "__main__":
     print(train_df.columns)
     print()
     print(train_df.isna().sum())
-
-
-    # explorer = DataExplorer()
-    # d = explorer._get_data()
-    # d = explorer.fin_data
-    # d1 = DataExplorer().base_data
-    # d2 = DataExplorer(exp=False).base_data
-    # print(d['X_train'].shape)
-    # print(d['X_train'].columns)
 
     X_train, y_train = train_df.drop("mag", axis=1), train_df['mag']
     X_val, y_val = val_df.drop("mag", axis=1), val_df['mag']
@@ -579,20 +566,3 @@ if __name__ == "__main__":
     dtr = DTRegressor()
     print("Predictions: ", dtr._call_model())
     print(dtr._evaluate_model(max_depth=11, min_sample=20)) # Best: depth=11, min_samples_split=20, R²=0.870592
-    
-    # d = EQDataLoader()
-    # def info_print(data):
-    #     print(data.head())
-    #     print(data.shape)
-    #     # print(data.sort_values(by='idx').index)
-    #     print(data.isna().sum())
-    #     print(data.tail())
-
-    # info_print(d['X_train'])    
-        
-    # data = d.data_f
-    # info_print(data)
-    # print("\n")
-    # data = d.refine_og_data()
-    # info_print(data)
-    # print()
