@@ -116,6 +116,7 @@ def _load_requested_sources(
 def run_pipeline(
     source: SourceName = "all",
     fetch_new: bool = False,
+    timeseries: bool = False,
     enrich_details: bool = False,
     save: bool = True,
     settings: PipelineSettings | None = None,
@@ -189,8 +190,15 @@ def run_pipeline(
     else:
         enriched = clean
 
-    feature_engineered = make_model_ready(enriched)
-    stage_results.append(_stage("features", len(enriched), len(feature_engineered)))
+    feature_engineered = make_model_ready(enriched, timeseries=timeseries)
+    stage_results.append(
+        _stage(
+            "features",
+            len(enriched),
+            len(feature_engineered),
+            message=f"timeseries={'enabled' if timeseries else 'disabled'}",
+        )
+    )
 
     feature_splits = chronological_split(feature_engineered)
     stage_results.append(

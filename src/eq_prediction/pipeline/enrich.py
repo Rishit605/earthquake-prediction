@@ -201,8 +201,8 @@ def enrich_missing_detail_columns(
 
     if patch_dataframe is None:
         patch_dataframe = load_saved_missing_value_patch(settings)
-    else:
-        result, patched_values = patch_saved_missing_values(result, patch_dataframe)
+    result, patched_values = patch_saved_missing_values(result, patch_dataframe)
+    result.attrs["saved_patch_values"] = patched_values
         
     result.attrs["loaded_saved_patch_rows"] = (
         len(patch_dataframe) if isinstance(patch_dataframe, pd.DataFrame) else 0

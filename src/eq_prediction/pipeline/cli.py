@@ -26,6 +26,11 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--source", choices=["local", "db", "all"], default="all")
     run_parser.add_argument("--fetch-new", action="store_true")
     run_parser.add_argument(
+        "--timeseries",
+        action="store_true",
+        help="Add cyclical time and rolling-window features for time-series workflows.",
+    )
+    run_parser.add_argument(
         "--enrich-details",
         action="store_true",
         help="Fetch USGS detail URLs to fill missing nst, dmin, and gap values.",
@@ -54,6 +59,7 @@ def main(argv: list[str] | None = None) -> int:
         result = run_pipeline(
             source=args.source,
             fetch_new=args.fetch_new,
+            timeseries=args.timeseries,
             enrich_details=args.enrich_details,
             save=not args.no_save,
             settings=PipelineSettings.from_env(),
