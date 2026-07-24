@@ -7,14 +7,14 @@ name = "earthquake-prediction"
 version = "0.1.0"
 description = "Earthquake data pipeline, training, and prediction project."
 readme = "README.md"
-requires-python = ">=3.10,<3.12"
+requires-python = ">=3.10"
 dependencies = [
   "comet-ml==3.45.0",
   "fastapi==0.115.0",
   "geojson==3.1.0",
   "geopandas==1.0.1",
   "joblib==1.4.2",
-  "matplotlib==3.10.5",
+  "matplotlib==3.9.1",
   "numpy==1.26.4",
   "pandas==2.2.2",
   "pillow==10.4.0",
