@@ -8,7 +8,7 @@ import warnings
 import geojson
 import geopandas as gpd
 
-from sklearn.preprocessing import LabelEncoder, MinMaxScaler
+from sklearn.preprocessing import LabelEncoder, MinMaxScaler, StandardScaler
 
 from pathlib import Path
 import os, sys
@@ -702,6 +702,13 @@ class DataScaler:
         scaled_dataset = scale.fit_transform(dataSet)
         scaled_dataset = pd.DataFrame(scaled_dataset, columns=dataSet.columns, index=dataSet.index)
         return scaled_dataset, scale
+
+
+def scaler_dataset(dataframe: pd.DataFrame) -> tuple[pd.DataFrame, StandardScaler]:
+    """Fit a z-score scaler and return scaled values with the fitted scaler."""
+    scaler = StandardScaler()
+    scaled = scaler.fit_transform(dataframe)
+    return pd.DataFrame(scaled, columns=dataframe.columns, index=dataframe.index), scaler
 
 
 ## Temporal and Advanced Feature Engineering
