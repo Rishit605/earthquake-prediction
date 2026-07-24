@@ -125,7 +125,7 @@ class DataFile:
 
 class DataExplorer:
     def __init__(self):
-            from eq_prediction.preprocessing.data_imputation_model import run_test_funcs
+        from eq_prediction.preprocessing.data_imputation_model import run_test_funcs
         self.base_data = run_test_funcs()
         self.fin_data = self._get_data()
         # self.test_x, self.test_y = self.dLL._load_final_data(test=True, transform=True)
