@@ -1,13 +1,12 @@
 # Earthquake Prediction
 
 Predicts earthquake magnitude from USGS seismic catalogue data using a
-from-scratch and scikit-learn ML pipeline. This is **Phase 1** of the
-project: it treats each earthquake event as an independent row and predicts
-magnitude from numerical/geographic features (traditional ML, not time
-series). Phase 2 will reframe this as a time-series forecasting problem —
-the groundwork (an LSTM model and training loop) already exists in
-`src/eq_prediction/training/training_nn.py` and `src/eq_prediction/model/model.py`,
-but isn't the focus of this phase.
+from-scratch and scikit-learn ML pipeline. The data pipeline supports two
+feature modes: **normal** row-level features (the default) and an optional
+**time-series** mode that adds cyclical time and rolling-window features.
+The LSTM model and training loop in `src/eq_prediction/training/training_nn.py`
+and `src/eq_prediction/model/model.py` remain exploratory groundwork rather
+than the default workflow.
 
 This phase's main deliverable is the **data pipeline**: a single command
 takes raw USGS data (from a live API, a local CSV, or PostgreSQL) all the
@@ -38,8 +37,9 @@ chronological train/validation/test split, ready to feed into a model.
   events from the USGS API, a local CSV, or a PostgreSQL database; cleans
   and deduplicates them; fills in a few commonly-missing seismic network
   fields (`nst`, `dmin`, `gap`) from cached or fetched USGS event detail
-  pages; engineers features (cyclical time features, missingness
-  indicators, one-hot encoded magnitude type); and writes a chronological
+  pages; engineers normal features (missingness indicators and one-hot
+  encoded magnitude type) or optional time-series features (cyclical time
+  and rolling-window features); and writes a chronological
   train/validation/test split to disk.
 - **From-scratch ML implementations** (`src/eq_prediction/model/`) — linear
   regression with gradient descent, a decision tree regressor, and a KNN
@@ -103,7 +103,7 @@ to build it interactively — see [Legacy / exploratory scripts](#legacy--explor
 
 ## Prerequisites
 
-- **Python 3.10 to 3.12** (3.11 recommended — that's what the Docker image uses)
+- **Python 3.10 or later** (3.11 recommended — that's what the Docker image uses)
 - **Git**
 - **PostgreSQL** — only if you want to use the database source; entirely optional
 - **~2–3 GB of free disk space** — the dependency list includes PyTorch,
@@ -257,17 +257,19 @@ noted.
 | `EQ_PIPELINE_REQUEST_TIMEOUT_SECONDS` | `30` | HTTP timeout for USGS requests |
 | `EQ_PIPELINE_REQUEST_MIN_INTERVAL_SECONDS` | `1` | Minimum delay between USGS requests |
 | `API_KEY`, `PROJECT_NAME`, `WORKSPACE` | — | Comet ML experiment tracking, only used by `scripts/main1.py` |
+| `FRONTEND_ORIGINS` | `http://localhost:5173` | Comma-separated browser origins permitted to call `scripts/main1.py` |
 
 ### CLI reference
 
 ```bash
-eq-pipeline run [--source {local,db,all}] [--fetch-new] [--enrich-details]
+eq-pipeline run [--source {local,db,all}] [--fetch-new] [--timeseries] [--enrich-details]
                  [--no-save] [--fetch-start ISO_DATETIME] [--fetch-end ISO_DATETIME]
 eq-pipeline status
 ```
 
 - `--source` — where to load existing data from (default `all`, meaning both local and db)
 - `--fetch-new` — additionally fetch new events from the live USGS API
+- `--timeseries` — add cyclical time and rolling-window features. Omit it for the default row-level feature set.
 - `--enrich-details` — allow network calls to USGS event-detail pages to fill missing `nst`/`dmin`/`gap` (see [Known issues](#known-issues) before using this on a fresh clone)
 - `--no-save` — run the pipeline without writing any output files (useful for a dry run)
 - `--fetch-start` / `--fetch-end` — explicit ISO datetimes bounding the USGS fetch window
@@ -335,36 +337,10 @@ the Phase-1 workflow this README documents.
 
 ## Known issues
 
-Documenting these here rather than leaving them to be discovered:
-
-1. **`--enrich-details` (or a local-source fallback) can crash on a fresh
-   clone with no saved patch file.** In
-   `src/eq_prediction/pipeline/enrich.py`, `enrich_missing_detail_columns`
-   raises `UnboundLocalError: cannot access local variable 'patched_values'`
-   when no enrichment patch CSV or database table exists yet **and** either
-   `--enrich-details` is passed, or the pipeline had to fall back from the
-   patched local/DB source to the unpatched one. The `patched_values`
-   counter is only initialized inside the branch that runs when a patch
-   dataframe is already available; the "no patch exists yet" branch skips
-   past it, so unless a patch file exists, referencing `patched_values`
-   further down throws. **Workaround for now:** avoid `--enrich-details` on
-   a completely fresh setup with no existing patch data, or place an
-   (even empty-of-values) patch CSV at the path configured by
-   `EQ_PIPELINE_LOCAL_ENRICHMENT_PATH` first. This should get a proper fix
-   (initializing `patched_values = 0` before the branch) in a follow-up pass.
-
-2. **One test currently fails against the code as written.**
-   `tests/pipeline/test_normalize_clean.py::test_feature_creation_and_chronological_split`
-   expects `make_model_ready()` to add cyclical time features (`hour_sin`,
-   etc.) by default, but `make_model_ready` added a `timeseries: bool = False`
-   parameter that gates those features off by default. Either the test
-   should pass `timeseries=True` explicitly, or the default should flip —
-   worth deciding before Phase 2, since the LSTM work will need those time
-   features on by default.
-
-Neither of these blocks the documented Quickstart path above (Option A/B/C
-without `--enrich-details`) — both surface only in the specific paths
-called out.
+The Docker service defaults to `--source local`, so a fresh clone needs either
+a local CSV at the configured path or an explicit `--fetch-new` command.
+The legacy LSTM/API path is still exploratory; see the roadmap for the work
+needed to integrate it directly with pipeline outputs.
 
 ---
 
@@ -376,7 +352,6 @@ called out.
   training loop from earlier exploration — the near-term work is wiring
   the pipeline's chronological splits into that training loop directly,
   rather than treating each row as independent.
-- Fix the two items above.
 - Reconcile `preprocessing/` and `notebook/` into the new `pipeline/`
   structure, or retire them once Phase 2 supersedes the traditional-ML
   approach they were built for.
