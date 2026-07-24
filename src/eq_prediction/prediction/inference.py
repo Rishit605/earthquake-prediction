@@ -11,7 +11,7 @@ from eq_prediction.model import EarthquakeModel
 from eq_prediction.training.training_nn import (
     target_column,
     load_prep_dataset,
-    VarTar, scale_data
+    VarTar, scale_data, window_size
 )
 
 # Hyperparameters
@@ -23,10 +23,11 @@ dropout_prob = 0.35
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu") # Setting the device
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
-MODEL_DIR = PROJECT_ROOT / "src" / "model"
+MODEL_DIR = PROJECT_ROOT / "models" / "trained"
+MODEL_PATH = MODEL_DIR / "earthquake_best_model.pth"
 
 # Test Step
-def test_step(loaded_model, model_pth):
+def test_step(loaded_model, test_dataloader, criterion, scaler_Y):
     loaded_model.eval()
     
     test_loss = 0
@@ -35,7 +36,7 @@ def test_step(loaded_model, model_pth):
 
     with torch.no_grad():
         for inputs, targets in test_dataloader:
-            inputs, targets = inputs.to("cuda"), targets.to("cuda")
+            inputs, targets = inputs.to(device), targets.to(device)
             outputs = loaded_model(inputs)
             loss = criterion(outputs, targets)
             test_loss += loss.item()
@@ -74,17 +75,19 @@ def test_step(loaded_model, model_pth):
         plt.close(fig)
 
 
-def load_model():
-    # Future Forecasts Generator
-    model_path = MODEL_DIR / "earthquake_best_model_torch.pth"
-
-    try:
-        model = EarthquakeModel(input_size, hidden_size, num_layers, output_size, dropout_prob=dropout_prob).to(device)
-        model.load_state_dict(torch.load(str(model_path)))
-        print("Model loaded successfully!")
-        return model
-    except Exception as e:
-        print(f"Error loading model: {e}")
+def load_model(feature_count: int):
+    if not MODEL_PATH.exists():
+        raise FileNotFoundError(f"Model checkpoint not found: {MODEL_PATH}")
+    model = EarthquakeModel(
+        feature_count,
+        hidden_size,
+        num_layers,
+        output_size,
+        dropout_prob=dropout_prob,
+    ).to(device)
+    model.load_state_dict(torch.load(MODEL_PATH, map_location=device))
+    model.eval()
+    return model
 
 # Future forecasting
 def future_forecast(model, last_sequence, scaler_X, scaler_Y, num_days, target_columns):
@@ -93,7 +96,7 @@ def future_forecast(model, last_sequence, scaler_X, scaler_Y, num_days, target_c
     forecasts = [] 
     with torch.no_grad():
         for _ in range(int(num_days * 24)):
-            inputs = torch.FloatTensor(current_sequence).unsqueeze(0).to("cuda")
+            inputs = torch.as_tensor(current_sequence, dtype=torch.float32, device=device).unsqueeze(0)
             output = model(inputs)
             forecasts.append(output.cpu().numpy()[0])
             
@@ -112,38 +115,24 @@ def generateDateRange(num_days, X1):
      
 
 def generate_future_predictions(data: bool, num_days=2):
-        num_days = num_days
+    X1, Y1 = VarTar(load_prep_dataset(training=data))
+    if len(X1) < window_size:
+        raise ValueError(f"At least {window_size} rows are required for forecasting.")
 
-        if data:
-            # Loading the data for last sequence
-            X1, Y1 = VarTar(load_prep_dataset(training=True))
-
-            last_sequence = X1[-1:]
-            model = load_model()
-
-            scaler_X, scaler_Y = scale_data(X1, Y1)[1], scale_data(X1, Y1)[3]
-        
-            future_predictions = future_forecast(model, np.array(last_sequence), scaler_X, scaler_Y, num_days, target_column)
-            
-            future_dates = generateDateRange(num_days, X1)
-            future_df = pd.DataFrame(future_predictions, columns=target_column, index=future_dates)
-            # future_df.to_csv('eq_forecasts_after31122023.csv')
-            return future_df, future_dates
-        else: 
-            # Loading the data for last sequence
-            X1, Y1 = VarTar(load_prep_dataset(training=False))
-
-            last_sequence = X1[-1:]
-            model = load_model()
-
-            scaler_X, scaler_Y = scale_data(X1, Y1)[1], scale_data(X1, Y1)[3]
-        
-            future_predictions = future_forecast(model, np.array(last_sequence), scaler_X, scaler_Y, num_days, target_column)
-            
-            future_dates = generateDateRange(num_days, X1)
-            future_df = pd.DataFrame(future_predictions, columns=target_column, index=future_dates)
-            # future_df.to_csv('eq_forecasts_after31122023.csv')
-            return future_df, future_dates
+    last_sequence = X1.iloc[-window_size:]
+    _, scaler_X, _, scaler_Y = scale_data(X1, Y1)
+    model = load_model(X1.shape[1])
+    future_predictions = future_forecast(
+        model,
+        last_sequence.to_numpy(),
+        scaler_X,
+        scaler_Y,
+        num_days,
+        target_column,
+    )
+    future_dates = generateDateRange(num_days, X1)
+    future_df = pd.DataFrame(future_predictions, columns=target_column, index=future_dates)
+    return future_df, future_dates
 
 
 if __name__ =='__main__':
