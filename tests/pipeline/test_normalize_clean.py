@@ -135,7 +135,7 @@ def test_feature_creation_and_chronological_split():
         }
     )
 
-    features = make_model_ready(raw)
+    features = make_model_ready(raw, timeseries=True)
     splits = chronological_split(features)
 
     assert "dmin_km" in features.columns
@@ -144,3 +144,26 @@ def test_feature_creation_and_chronological_split():
     assert len(splits.train) == 7
     assert len(splits.validation) == 1
     assert len(splits.test) == 2
+
+
+def test_normal_features_exclude_timeseries_features():
+    raw = pd.DataFrame(
+        {
+            "event_id": ["e0"],
+            "time": [pd.Timestamp("2024-01-01", tz="UTC")],
+            "mag": [3.0],
+            "longitude": [10.0],
+            "latitude": [20.0],
+            "depth_km": [5.0],
+            "dmin": [0.2],
+            "rms": [0.5],
+            "gap": [90.0],
+            "nst": [20.0],
+            "magType": ["ml"],
+        }
+    )
+
+    features = make_model_ready(raw)
+
+    assert "hour_sin" not in features.columns
+    assert "eq_count_last_7d" not in features.columns
