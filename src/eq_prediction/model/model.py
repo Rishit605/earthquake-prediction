@@ -1,5 +1,6 @@
 import os
 import sys
+from pathlib import Path
 import pandas as pd
 import numpy as np
 
@@ -37,7 +38,7 @@ class EarthquakeModel(nn.Module):
 # Defining the Model Architecture.
 class EarthquakeModel2(nn.Module):
     def __init__(self, input_size, hidden_size, num_layers, output_size, dropout_prob=0.3):
-        super(EarthquakeModel, self).__init__()
+        super().__init__()
         self.hidden_size = hidden_size
         self.num_layers = num_layers
         
@@ -79,6 +80,7 @@ class ModelCheckPoint:
     def __call__(self, model, valid_loss):
         if valid_loss < self.best_loss:
             self.best_loss = valid_loss
+            Path(self.file_path).parent.mkdir(parents=True, exist_ok=True)
             torch.save(model.state_dict(), self.file_path)
 
             if self.verbose:
@@ -102,12 +104,12 @@ class Early_Stopping:
 
         if self.best_score is None:
             self.best_score = score
-        elif score < self.best_score + self.delta:
+        elif score <= self.best_score + self.delta:
             self.counter += 1
 
             if self.verbose:
                 print(f"Early Stopping Count er: {self.counter} out of {self.patience}")
-            if self.patience >= self.patience:
+            if self.counter >= self.patience:
                 self.early_stop = True
         else:
             self.best_score = score
