@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from datetime import datetime
+from pathlib import Path
 from typing import Iterable
 
 import pandas as pd
@@ -12,7 +13,7 @@ from .enrich import enrich_missing_detail_columns, load_existing_enrichment_patc
 from .features import make_model_ready
 from .models import PipelineResult, SourceName, StageResult, utc_now
 from .normalize import combine_raw_frames
-from .sources import fetch_new_usgs_events, load_db_table, load_local_csv
+from .sources import fetch_new_usgs_event_frames, load_db_table, load_local_csv
 from .split import chronological_split
 from .storage import save_outputs
 from .training_ready import build_training_outputs
@@ -36,17 +37,20 @@ def _load_requested_sources(
     fetch_new: bool,
     fetch_start: datetime | None,
     fetch_end: datetime | None,
-) -> tuple[list[pd.DataFrame], list[StageResult], list[str]]:
+    local_path: str | Path | None = None,
+) -> tuple[list[pd.DataFrame], pd.DataFrame | None, list[StageResult], list[str]]:
     frames: list[pd.DataFrame] = []
+    fetched_raw: pd.DataFrame | None = None
     stages: list[StageResult] = []
     errors: list[str] = []
 
     if source in ("local", "all"):
         local_error: str | None = None
+        primary_local_path = Path(local_path) if local_path is not None else settings.local_raw_patch_path
         try:
-            local = load_local_csv(settings, settings.local_raw_patch_path)
+            local = load_local_csv(settings, primary_local_path)
             frames.append(local)
-            stages.append(_stage("load_local", 0, len(local), message=f"{settings.local_raw_patch_path}", code="L01"))
+            stages.append(_stage("load_local", 0, len(local), message=f"{primary_local_path}", code="L01"))
         except Exception as exc:  # noqa: BLE001 - source fallback is intentional
             local_error = f"primary local source failed: {type(exc).__name__}: {exc}"
             try:
@@ -104,13 +108,15 @@ def _load_requested_sources(
     if fetch_new:
         existing = combine_raw_frames(frames)
         try:
-            fetched = fetch_new_usgs_events(settings, existing, fetch_start, fetch_end)
+            fetched, fetched_raw = fetch_new_usgs_event_frames(
+                settings, existing, fetch_start, fetch_end
+            )
             frames.append(fetched)
             stages.append(_stage("fetch_usgs", 0, len(fetched)))
         except Exception as exc:  # noqa: BLE001 - source fallback is intentional
             errors.append(f"usgs source failed: {type(exc).__name__}: {exc}")
 
-    return frames, stages, errors
+    return frames, fetched_raw, stages, errors
 
 
 def run_pipeline(
@@ -122,19 +128,15 @@ def run_pipeline(
     settings: PipelineSettings | None = None,
     fetch_start: datetime | None = None,
     fetch_end: datetime | None = None,
+    local_path: str | Path | None = None,
 ) -> PipelineResult:
     if source not in ("local", "db", "all"):
         raise ValueError("source must be one of: local, db, all.")
 
     settings = settings or PipelineSettings.from_env()
-    frames, stage_results, errors = _load_requested_sources(
-        settings, source, fetch_new, fetch_start, fetch_end
+    frames, fetched_raw, stage_results, errors = _load_requested_sources(
+        settings, source, fetch_new, fetch_start, fetch_end, local_path
     )
-
-    # print(stage_results)
-    # print(type(frames))
-    # print()
-    # return frames
 
     raw = combine_raw_frames(frames)
     stage_results.append(_stage("combine_sources", 0, len(raw)))
@@ -158,13 +160,14 @@ def run_pipeline(
     # return clean, rejected, stage_results
 
     enrichment_patch = load_existing_enrichment_patch(settings)
-    should_enrich = (
-        isinstance(enrichment_patch, pd.DataFrame)
-        or enrich_details
-        or any(stage.code in {"L02", "DB02"} for stage in stage_results)
-    )
+    # should_enrich = (
+    #     isinstance(enrichment_patch, pd.DataFrame)
+    #     or enrich_details
+    #     or any(stage.code in {"L02", "DB02"} for stage in stage_results)
+    # )
     # return should_enrich, stage_results, enrichment_patch
-    if should_enrich:
+    # if should_enrich:
+    if enrich_details:
         saved_patch = enrichment_patch if isinstance(enrichment_patch, pd.DataFrame) else None
         enriched = enrich_missing_detail_columns(
             clean,
@@ -246,6 +249,7 @@ def run_pipeline(
             prediction_input=training_outputs.prediction_input,
             rejected=rejected,
             result=result,
+            fetched_raw=fetched_raw,
         )
         result = replace(result, output_paths=output_paths)
     return result
