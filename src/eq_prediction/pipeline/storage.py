@@ -36,6 +36,7 @@ def save_outputs(
     rejected: pd.DataFrame,
     result: PipelineResult,
     prediction_input: pd.DataFrame | None = None,
+    fetched_raw: pd.DataFrame | None = None,
 ) -> dict[str, Path]:
     paths = {
         "raw": _write_csv(raw, settings.raw_output_path),
@@ -50,6 +51,8 @@ def save_outputs(
         ),
         "rejected": _write_csv(rejected, settings.rejected_output_path),
     }
+    if fetched_raw is not None:
+        paths["fetched_raw"] = _write_csv(fetched_raw, settings.fetched_raw_output_path)
     summary = asdict(result)
     summary["output_paths"] = {key: str(path) for key, path in paths.items()}
     settings.summary_output_path.parent.mkdir(parents=True, exist_ok=True)
