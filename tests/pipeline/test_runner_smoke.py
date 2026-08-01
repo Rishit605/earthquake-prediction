@@ -99,6 +99,7 @@ def test_end_to_end_small_local_pipeline_run(tmp_path):
     assert settings.prediction_output_path.exists()
     assert settings.rejected_output_path.exists()
     assert settings.summary_output_path.exists()
+    assert not settings.fetched_raw_output_path.exists()
 
     model_ready = load_dataset(settings=settings)
     prediction = load_prediction_input(settings=settings)
@@ -109,6 +110,33 @@ def test_end_to_end_small_local_pipeline_run(tmp_path):
     assert "event_id" not in model_ready.columns
     assert "mag" in model_ready.columns
     assert "mag" not in prediction.columns
+
+
+def test_local_path_overrides_the_configured_local_source(tmp_path):
+    configured_path = tmp_path / "configured.csv"
+    custom_path = tmp_path / "custom.csv"
+    pd.DataFrame(
+        [
+            {
+                "geo": "POINT Z (10 20 5)",
+                "code": "custom-event",
+                "time": 1700000000000,
+                "updated": 1700000001000,
+                "mag": 3.0,
+                "type": "earthquake",
+            }
+        ]
+    ).to_csv(custom_path, index=False)
+    settings = make_settings(tmp_path, configured_path)
+
+    result = run_pipeline(
+        source="local", local_path=custom_path, fetch_new=False, save=True, settings=settings
+    )
+
+    raw = pd.read_csv(settings.raw_output_path)
+    assert result.status == "completed"
+    assert raw.loc[0, "event_id"] == "custom-event"
+    assert result.stage_results[0].message == str(custom_path)
 
 
 def test_saved_enrichment_patch_does_not_replace_clean_data(tmp_path):
@@ -144,10 +172,105 @@ def test_saved_enrichment_patch_does_not_replace_clean_data(tmp_path):
         ]
     ).to_csv(settings.enrichment_patch_path, index=False)
 
-    result = run_pipeline(source="local", fetch_new=False, save=True, settings=settings)
+    result = run_pipeline(
+        source="local", local_path=str(csv_path), fetch_new=False, save=True, settings=settings
+    )
     clean = pd.read_csv(settings.clean_output_path)
 
     assert result.status == "completed"
     assert "time" in clean.columns
     assert clean.loc[0, "event_id"] == "a"
     assert clean.loc[0, "nst"] == 12
+
+
+def test_fetch_new_saves_full_usgs_data_alongside_normalized_raw(tmp_path, monkeypatch):
+    csv_path = tmp_path / "sample.csv"
+    pd.DataFrame(
+        [
+            {
+                "geo": "POINT Z (10 20 5)",
+                "code": "local-event",
+                "time": 1700000000000,
+                "updated": 1700000001000,
+                "mag": 3.0,
+                "type": "earthquake",
+            }
+        ]
+    ).to_csv(csv_path, index=False)
+    settings = make_settings(tmp_path, csv_path)
+    features = [
+        {
+            "id": "usgs-event",
+            "geometry": {"coordinates": [77.1, 28.6, 12.0]},
+            "properties": {
+                "time": 1700000200000,
+                "updated": 1700000201000,
+                "mag": 4.2,
+                "magType": "mb",
+                "type": "earthquake",
+                "status": "reviewed",
+                "felt": 7,
+                "tsunami": 0,
+                "custom_usgs_field": "preserved",
+            },
+        }
+    ]
+    monkeypatch.setattr(
+        "eq_prediction.pipeline.sources.fetch_usgs_window", lambda *args: features
+    )
+
+    result = run_pipeline(
+        source="local",
+        local_path=str(csv_path),
+        fetch_new=True,
+        save=True,
+        settings=settings,
+        fetch_start=pd.Timestamp("2024-01-01", tz="UTC").to_pydatetime(),
+        fetch_end=pd.Timestamp("2024-01-02", tz="UTC").to_pydatetime(),
+    )
+
+    fetched_raw = pd.read_csv(settings.fetched_raw_output_path)
+    normalized_raw = pd.read_csv(settings.raw_output_path)
+
+    assert result.output_paths["fetched_raw"] == settings.fetched_raw_output_path
+    assert {"felt", "tsunami", "custom_usgs_field", "event_id", "longitude", "latitude", "depth_km"}.issubset(fetched_raw.columns)
+    assert fetched_raw.loc[0, "custom_usgs_field"] == "preserved"
+    assert set(normalized_raw.columns) == {
+        "event_id", "time", "updated", "longitude", "latitude", "depth_km", "mag",
+        "magType", "type", "status", "detail", "nst", "dmin", "rms", "gap", "source",
+    }
+    assert "custom_usgs_field" not in normalized_raw.columns
+
+
+def test_failed_usgs_fetch_does_not_save_fetched_raw_data(tmp_path, monkeypatch):
+    csv_path = tmp_path / "sample.csv"
+    pd.DataFrame(
+        [
+            {
+                "geo": "POINT Z (10 20 5)",
+                "code": "local-event",
+                "time": 1700000000000,
+                "updated": 1700000001000,
+                "mag": 3.0,
+                "type": "earthquake",
+            }
+        ]
+    ).to_csv(csv_path, index=False)
+    settings = make_settings(tmp_path, csv_path)
+
+    def fail_fetch(*args):
+        raise RuntimeError("USGS unavailable")
+
+    monkeypatch.setattr("eq_prediction.pipeline.sources.fetch_usgs_window", fail_fetch)
+
+    result = run_pipeline(
+        source="local",
+        local_path=str(csv_path),
+        fetch_new=True,
+        save=True,
+        settings=settings,
+    )
+
+    assert result.status == "completed_with_warnings"
+    assert not settings.fetched_raw_output_path.exists()
+    assert "fetched_raw" not in result.output_paths
