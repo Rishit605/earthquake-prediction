@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, List
 
 import pandas as pd
 import requests
@@ -84,12 +84,33 @@ def fetch_usgs_window(
     return features
 
 
-def fetch_new_usgs_events(
+def flatten_usgs_features(features: list[dict[str, Any]]) -> pd.DataFrame:
+    """Flatten fetched USGS features without dropping API properties."""
+    rows: list[dict[str, Any]] = []
+    for feature in features:
+        properties = feature.get("properties") or {}
+        if not isinstance(properties, dict):
+            properties = {}
+        coordinates = (feature.get("geometry") or {}).get("coordinates") or []
+        row = dict(properties)
+        row.update(
+            {
+                "event_id": feature.get("id") or properties.get("code"),
+                "longitude": coordinates[0] if len(coordinates) > 0 else None,
+                "latitude": coordinates[1] if len(coordinates) > 1 else None,
+                "depth_km": coordinates[2] if len(coordinates) > 2 else None,
+            }
+        )
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def fetch_new_usgs_event_frames(
     settings: PipelineSettings,
     existing_raw: pd.DataFrame | None = None,
     start: datetime | None = None,
     end: datetime | None = None,
-) -> pd.DataFrame:
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     now = datetime.now(timezone.utc)
     if end is None:
         end = now
@@ -113,4 +134,15 @@ def fetch_new_usgs_events(
         cursor = chunk_end
         if cursor < end:
             time.sleep(settings.request_min_interval_seconds)
-    return normalize_usgs_features(features, source="usgs")
+    return normalize_usgs_features(features, source="usgs"), flatten_usgs_features(features)
+
+
+def fetch_new_usgs_events(
+    settings: PipelineSettings,
+    existing_raw: pd.DataFrame | None = None,
+    start: datetime | None = None,
+    end: datetime | None = None,
+) -> pd.DataFrame:
+    """Fetch and normalize new USGS events (backwards-compatible API)."""
+    normalized, _ = fetch_new_usgs_event_frames(settings, existing_raw, start, end)
+    return normalized
