@@ -17,7 +17,7 @@ from eq_prediction.preprocessing.data_preprocessing import Data_Sets, EQDataLoad
 from eq_prediction.helpers.utils import DataDist, plot_histograms
 from eq_prediction.model.lr_scratch import LinearR
 from eq_prediction.model.decision_tree_scratch import DecisionTreeR
-from eq_prediction_data_pipeline import run_pipeline, load_dataset, load_prediction_input
+from eq_prediction.pipeline import run_pipeline, load_dataset, load_prediction_input
 
 
 
@@ -535,7 +535,8 @@ def summarize_missing_data(data):
     return pd.DataFrame(summary).set_index("column")
 
 if __name__ == "__main__":
-    result = run_pipeline(source="db", fetch_new=False, enrich_details=False)
+    # result = run_pipeline(source="db", fetch_new=False, enrich_details=False)
+    pipe = run_pipeline(source="local", fetch_new=True, enrich_details=False)
     train_df = load_dataset("train")
     val_df = load_dataset("validation")
     # test_df = load_dataset("test")
