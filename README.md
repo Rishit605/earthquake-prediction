@@ -218,6 +218,7 @@ automatically):
 | File | Contents |
 |---|---|
 | `data/raw/earthquakes_raw.csv` | Combined raw data from every source you requested, before cleaning |
+| `data/raw/usgs_fetched_raw.csv` | Full flattened USGS response fields for newly fetched events; written only with `--fetch-new` |
 | `data/clean/earthquakes_clean.csv` | After validity filtering, deduplication, and missing-value enrichment |
 | `data/model_ready/earthquakes_model_ready.csv` | Fully feature-engineered, numeric-only, z-scored — ready for a model |
 | `data/splits/train.csv`, `validation.csv`, `test.csv` | Chronological split of the model-ready data (70/15/15 by default) |
