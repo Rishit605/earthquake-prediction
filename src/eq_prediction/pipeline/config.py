@@ -52,8 +52,8 @@ class DatabaseSettings:
             host=os.getenv("PC_IP_ADDRESS", "localhost"),
             port=_get_int("DB_PORT", 5432),
             database=os.getenv("EQ_DB_NAME", "eq_db"),
-            base_raw_schema=os.getenv("EQ_DB_RAW_UNPATCHED_SCHEMA", "lappy_raw_data"),
-            base_raw_table=os.getenv("EQ_DB_RAW_UNPATCHED_TABLE", "eq_data_updated3"),
+            base_raw_schema=os.getenv("EQ_DB_RAW_UNPATCHED_SCHEMA", "unpatched_final_raw_data"),
+            base_raw_table=os.getenv("EQ_DB_RAW_UNPATCHED_TABLE", "latest_unpatched_raw_data"),
             enrich_patch_schema=os.getenv("EQ_DB_ENRICH_PATCH_SCHEMA"),
             enrich_patch_table=os.getenv("EQ_DB_ENRICH_PATCH_TABLE"),
             raw_patch_schema=os.getenv("EQ_DB_RAW_PATCHED_SCHEMA", "final_data"),
@@ -115,7 +115,7 @@ class PipelineSettings:
                 workspace_root,
             ),
             local_raw_patch_path=_existing_env_path(
-                "EQ_PIPELINE_LOCAL_RAW_PATCHED_PATH",
+                "EQ_PIPELINE_LOCAL_RAW_DATA_PATH",
                 default_patched_raw,
                 eq_prediction_data_dir,
                 eq_prediction_root,
@@ -142,6 +142,10 @@ class PipelineSettings:
     @property
     def raw_output_path(self) -> Path:
         return self.data_dir / "raw" / "earthquakes_raw.csv"
+
+    @property
+    def fetched_raw_output_path(self) -> Path:
+        return self.data_dir / "raw" / "usgs_fetched_raw.csv"
 
     @property
     def clean_output_path(self) -> Path:
