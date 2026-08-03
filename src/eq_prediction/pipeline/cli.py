@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from .config import PipelineSettings
 from .runner import run_pipeline
 from .storage import load_run_summary
+from .sync import sync_data
 
 
 def _parse_datetime(value: str | None) -> datetime | None:
@@ -40,6 +41,9 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--fetch-end", help="Optional ISO datetime for USGS fetch end.")
 
     subparsers.add_parser("status", help="Print the latest run summary.")
+    sync_parser = subparsers.add_parser("sync", help="Synchronize data CSV snapshots with PostgreSQL.")
+    sync_parser.add_argument("--direction", choices=["auto", "push", "pull"], default="auto")
+    sync_parser.add_argument("--force", action="store_true", help="Resolve conflicts in the selected push/pull direction.")
     return parser
 
 
@@ -80,6 +84,15 @@ def main(argv: list[str] | None = None) -> int:
             for key, path in result.output_paths.items():
                 print(f"- {key}: {path}")
         return 0 if result.status != "failed" else 1
+
+    if args.command == "sync":
+        result = sync_data(PipelineSettings.from_env(), direction=args.direction, force=args.force)
+        print(f"status={result.status}")
+        for item in result.files:
+            print(f"- {item.path}: {item.action} ({item.table})")
+        for error in result.errors:
+            print(f"warning: {error}")
+        return 0 if result.status == "completed" else 1
 
     parser.error(f"Unknown command: {args.command}")
     return 2

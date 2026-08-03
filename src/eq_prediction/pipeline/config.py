@@ -178,3 +178,7 @@ class PipelineSettings:
     @property
     def summary_output_path(self) -> Path:
         return self.data_dir / "run_summary.json"
+
+    @property
+    def sync_manifest_path(self) -> Path:
+        return self.data_dir / ".sync_manifest.json"

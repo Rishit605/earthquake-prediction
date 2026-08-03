@@ -57,27 +57,37 @@ class DetailCache:
         digest = hashlib.sha256(url.encode("utf-8")).hexdigest()
         return self.cache_dir / f"{digest}.json"
 
-    def fetch(self, url: str, index: int) -> dict[str, Any]:
+    def fetch(self, url: str, index: int, max_retries: int = 4) -> dict[str, Any]:
         path = self._path_for(url)
         if path.exists():
             return json.loads(path.read_text(encoding="utf-8"))
 
-        wait = max(0.0, self._next_request_at - time.monotonic())
-        if wait:
-            time.sleep(wait)
-        self._next_request_at = time.monotonic() + self.min_interval
+        attempt = 0
+        while True:
+            wait = max(0.0, self._next_request_at - time.monotonic())
+            if wait:
+                time.sleep(wait)
+            self._next_request_at = time.monotonic() + self.min_interval
 
-        response = requests.get(
-            url,
-            timeout=self.timeout,
-            headers={"User-Agent": "eq-prediction-data-pipeline/0.1"},
-        )
-        response.raise_for_status()
-        payload = response.json()
-        payload["index"] = index
-        path.write_text(json.dumps(payload), encoding="utf-8")
-        return payload
+            response = requests.get(
+                url,
+                timeout=self.timeout,
+                headers={"User-Agent": "eq-prediction-data-pipeline/0.1"},
+            )
 
+            if response.status_code == 429 and attempt < max_retries:
+                retry_after = response.headers.get("Retry-After")
+                delay = float(retry_after) if retry_after else (2 ** attempt) * self.min_interval
+                time.sleep(delay)
+                self._next_request_at = time.monotonic() + self.min_interval
+                attempt += 1
+                continue
+
+            response.raise_for_status()
+            payload = response.json()
+            payload["index"] = index
+            path.write_text(json.dumps(payload), encoding="utf-8")
+            return payload
 
 def _load_patch_from_database(settings: PipelineSettings) -> pd.DataFrame | None:
     if not settings.database.enrich_patch_schema or not settings.database.enrich_patch_table:
@@ -236,6 +246,9 @@ def enrich_missing_detail_columns(
                 if pd.isna(result.at[index, column]) and json_key in found:
                     result.at[index, column] = found[json_key]
             result.at[index, "enrichment_status"] = "success"
-        except Exception as exc:  # noqa: BLE001 - record per-row enrichment failure
+        except requests.exceptions.HTTPError as exc:
+            status = exc.response.status_code if exc.response is not None else "unknown"
+            result.at[index, "enrichment_status"] = f"failed:HTTPError:{status}"
+        except Exception as exc:  # noqa: BLE001
             result.at[index, "enrichment_status"] = f"failed:{type(exc).__name__}"
     return result

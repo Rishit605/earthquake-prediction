@@ -252,4 +252,28 @@ def run_pipeline(
             fetched_raw=fetched_raw,
         )
         result = replace(result, output_paths=output_paths)
+        if settings.database.available:
+            try:
+                from .sync import sync_data
+
+                sync_result = sync_data(settings)
+                sync_stage = _stage(
+                    "sync",
+                    len(output_paths),
+                    len(output_paths) - sync_result.pending,
+                    message=f"status={sync_result.status}; pending={sync_result.pending}",
+                )
+                sync_errors = (*result.errors, *sync_result.errors)
+                result = replace(
+                    result,
+                    status="completed_with_warnings" if sync_errors else result.status,
+                    stage_results=(*result.stage_results, sync_stage),
+                    errors=sync_errors,
+                )
+            except Exception as exc:  # noqa: BLE001 - a sync warning must not fail saved pipeline data
+                result = replace(
+                    result,
+                    status="completed_with_warnings",
+                    errors=(*result.errors, f"database sync failed: {type(exc).__name__}: {exc}"),
+                )
     return result
