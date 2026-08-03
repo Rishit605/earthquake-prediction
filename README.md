@@ -205,6 +205,24 @@ eq-pipeline run --source db
 eq-pipeline status
 ```
 
+### Synchronize local data with PostgreSQL
+
+When database credentials are configured, every saved pipeline run attempts to
+sync CSV snapshots below `data/` to the dedicated `pipeline_sync` PostgreSQL
+schema. A database outage never discards local output: the next run, or the
+following command, retries it.
+
+```bash
+eq-pipeline sync --direction auto
+```
+
+Use `--direction push --force` to make local files authoritative or
+`--direction pull --force` to restore database snapshots after a reported
+conflict. To retry automatically while the pipeline is not running, schedule
+`eq-pipeline sync --direction auto` in Windows Task Scheduler (or cron on
+Linux/macOS). The synchronizer only mirrors CSVs; caches and JSON summaries
+remain local.
+
 This prints the JSON summary of the most recent run — row counts at each
 stage, any errors, and where the output files were written.
 
@@ -266,6 +284,7 @@ noted.
 eq-pipeline run [--source {local,db,all}] [--fetch-new] [--timeseries] [--enrich-details]
                  [--no-save] [--fetch-start ISO_DATETIME] [--fetch-end ISO_DATETIME]
 eq-pipeline status
+eq-pipeline sync [--direction {auto,push,pull}] [--force]
 ```
 
 - `--source` — where to load existing data from (default `all`, meaning both local and db)
